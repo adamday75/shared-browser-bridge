@@ -10,7 +10,7 @@ The user can:
 - let the agent act in the real visible Windows Chrome
 - interrupt safely at any time
 - pause agent control explicitly
-- resume agent control from the current real browser state
+- resume agent control from the last observed agent page-target baseline
 
 ## Required deliverables
 
@@ -30,7 +30,7 @@ The user can:
 ### 3. State store
 - [x] current state persisted in memory
 - [x] last successful attach metadata
-- [ ] current target tab metadata
+- [x] last observed agent page-target baseline metadata
 - [x] last agent action timestamp written on agent-driven routes
 - [x] last human activity timestamp written on explicit manual control routes
 - [x] pause reason / error reason fields
@@ -39,7 +39,8 @@ The user can:
 - [x] explicit transition guards
 - [x] invalid transitions rejected cleanly
 - [ ] human authority overrides agent authority
-- [ ] uncertain state prefers pause over blind action
+- [x] uncertain state prefers pause over blind action for resume checks
+- [x] explicit adopt-current-target path on resume when drift is detected
 
 ### 5. Human activity detection
 Start simple.
@@ -53,7 +54,7 @@ Start simple.
 - [x] actions blocked while `PAUSED`
 - [x] actions blocked or rejected while `HUMAN_ACTIVE`
 - [x] overlapping agent actions rejected while `AGENT_ACTIVE`
-- [ ] actions require fresh state check before resume
+- [x] actions require fresh state check before resume after prior agent activity
 
 ### 7. Recovery behavior
 - [ ] clean error when browser disconnects
@@ -70,7 +71,7 @@ Start simple.
 ### 9. Verification targets
 - [ ] agent acts, then pauses successfully
 - [ ] human interrupts without agent fighting back
-- [ ] resume works from changed page state
+- [ ] resume works from changed page state (adoptCurrentTarget path available; live test pending)
 - [ ] tab switch during pause does not corrupt state
 - [ ] disconnect produces honest error state
 
@@ -89,9 +90,10 @@ Start simple.
 - [x] add transition logging
 
 ### Phase C — human takeover behavior
-- [ ] define v1 takeover heuristic
+- [x] define v1 observable-target drift heuristic for resume safety
 - [x] record human activity timestamp on explicit manual control routes
-- [ ] move to `HUMAN_ACTIVE` or `PAUSED` when takeover is detected
+- [x] explicit `adoptCurrentTarget` path on resume: accepts new observable baseline, not a blind override
+- [ ] move to `HUMAN_ACTIVE` or `PAUSED` when takeover is detected (requires passive browser telemetry — out of scope until Phase D)
 
 ### Phase D — recovery
 - [ ] browser disconnect recovery path
@@ -102,7 +104,7 @@ Start simple.
 Milestone 3 is done when:
 - the bridge no longer just issues actions blindly
 - a human can interrupt and the bridge yields safely
-- resume works from current browser reality
+- resume works from the last observed agent page-target baseline or an explicit adopted target
 - state transitions are explicit and logged
 - failures are honest, not silent
 

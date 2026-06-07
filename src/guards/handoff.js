@@ -37,10 +37,10 @@ export function createHandoffGuard({ store, session }) {
       }
     }
 
+    let result;
     try {
-      const result = await fn();
+      result = await fn();
       store.recordAgentAction(label, { status: result?.status ?? null, ok: result?.status === 200 });
-      return result;
     } finally {
       // Return to ATTACHED only if we were the one who transitioned in.
       // Guard against a concurrent external transition (e.g. pause) having
@@ -53,5 +53,20 @@ export function createHandoffGuard({ store, session }) {
         }
       }
     }
+
+    // Record the tab baseline the agent just operated on so later resume logic
+    // can compare against the same observable CDP surface. If the bridge was
+    // externally paused before we got here, do not overwrite the baseline with
+    // post-pause browser reality.
+    if (store.getState().controlState === 'ATTACHED') {
+      try {
+        const target = await session.getFirstPageTarget();
+        store.recordTargetTab({ id: target.id, url: target.url, title: target.title });
+      } catch {
+        // silently skip — no tab metadata is better than a crashed action
+      }
+    }
+
+    return result;
   };
 }

@@ -26,7 +26,7 @@ export function createServer({ store, session, logger = console }) {
     'GET /page/text': textRoute({ store, session }),
     'GET /page/snapshot': snapshotRoute({ store, session }),
     'POST /control/pause': pauseRoute({ store }),
-    'POST /control/resume': resumeRoute({ store }),
+    'POST /control/resume': resumeRoute({ store, session }),
     'GET /control/state': controlStateRoute({ store }),
   };
 

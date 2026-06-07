@@ -25,6 +25,7 @@ export function createStore({ logger = console } = {}) {
     pauseReason: null,
     lastAgentAction: null,
     lastHumanActivity: null,
+    targetTab: null,
   };
 
   function getState() {
@@ -67,5 +68,9 @@ export function createStore({ logger = console } = {}) {
     state = { ...state, lastHumanActivity: { source, at: new Date().toISOString(), reason } };
   }
 
-  return { getState, setAttached, setAttachError, transition, recordAgentAction, recordHumanActivity };
+  function recordTargetTab({ id, url, title }) {
+    state = { ...state, targetTab: { id, url, title, at: new Date().toISOString() } };
+  }
+
+  return { getState, setAttached, setAttachError, transition, recordAgentAction, recordHumanActivity, recordTargetTab };
 }
