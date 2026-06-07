@@ -63,5 +63,9 @@ export function createStore({ logger = console } = {}) {
     state = { ...state, lastAgentAction: { label, at: new Date().toISOString(), status, ok } };
   }
 
-  return { getState, setAttached, setAttachError, transition, recordAgentAction };
+  function recordHumanActivity(source, { reason = null } = {}) {
+    state = { ...state, lastHumanActivity: { source, at: new Date().toISOString(), reason } };
+  }
+
+  return { getState, setAttached, setAttachError, transition, recordAgentAction, recordHumanActivity };
 }

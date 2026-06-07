@@ -32,7 +32,7 @@ The user can:
 - [x] last successful attach metadata
 - [ ] current target tab metadata
 - [x] last agent action timestamp written on agent-driven routes
-- [x] last human activity timestamp (field exists, not yet written)
+- [x] last human activity timestamp written on explicit manual control routes
 - [x] pause reason / error reason fields
 
 ### 4. Transition rules
@@ -45,7 +45,7 @@ The user can:
 Start simple.
 
 - [x] explicit manual pause path works first
-- [ ] bridge records recent human activity timestamp when possible
+- [x] bridge records recent human activity timestamp when possible
 - [ ] define what counts as human takeover for v1
 - [ ] no silent fighting between human and agent
 
@@ -90,7 +90,7 @@ Start simple.
 
 ### Phase C — human takeover behavior
 - [ ] define v1 takeover heuristic
-- [ ] record human activity timestamp
+- [x] record human activity timestamp on explicit manual control routes
 - [ ] move to `HUMAN_ACTIVE` or `PAUSED` when takeover is detected
 
 ### Phase D — recovery

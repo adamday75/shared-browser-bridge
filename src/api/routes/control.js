@@ -48,6 +48,7 @@ export function pauseRoute({ store }) {
 
     try {
       store.transition('PAUSED', { reason });
+      store.recordHumanActivity('manual-pause', { reason });
       return { status: 200, body: { ok: true, controlState: 'PAUSED', reason } };
     } catch (err) {
       if (err instanceof TransitionError) {
@@ -78,6 +79,7 @@ export function resumeRoute({ store }) {
 
     try {
       store.transition('ATTACHED');
+      store.recordHumanActivity('manual-resume');
       return { status: 200, body: { ok: true, controlState: 'ATTACHED' } };
     } catch (err) {
       if (err instanceof TransitionError) {
