@@ -1,0 +1,12 @@
+{
+  "name": "shared-browser-bridge",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local shared-control browser bridge for real visible Chrome sessions.",
+  "type": "module",
+  "scripts": {
+    "dev": "node src/index.js",
+    "start": "node src/index.js",
+    "spec:review": "echo 'Review docs in docs/ before build session'"
+  }
+}
