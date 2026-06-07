@@ -1,3 +1,17 @@
+export class CdpConnectionError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'CdpConnectionError';
+  }
+}
+
+export class NoPageTargetError extends Error {
+  constructor() {
+    super('no open page tabs to act on');
+    this.name = 'NoPageTargetError';
+  }
+}
+
 /**
  * Thin client over Chrome's CDP HTTP endpoint (the same /json/* surface the
  * launcher uses to validate an attach). Milestone 1 only needs to read tab
@@ -17,9 +31,14 @@ export function createCdpSession({ endpoint, fetchImpl = fetch }) {
   }
 
   async function listPageTargets() {
-    const response = await fetchImpl(`${endpoint}/json/list`);
+    let response;
+    try {
+      response = await fetchImpl(`${endpoint}/json/list`);
+    } catch (err) {
+      throw new CdpConnectionError(`CDP connection failed: ${err.message}`);
+    }
     if (!response.ok) {
-      throw new Error(`CDP tab list failed with status ${response.status}`);
+      throw new CdpConnectionError(`CDP tab list failed with status ${response.status}`);
     }
     const targets = await response.json();
     return targets.filter((target) => target.type === 'page');
@@ -44,7 +63,7 @@ export function createCdpSession({ endpoint, fetchImpl = fetch }) {
     const targets = await listPageTargets();
     const target = targets[0];
     if (!target) {
-      throw new Error('no open page tabs to act on');
+      throw new NoPageTargetError();
     }
     return target;
   }
