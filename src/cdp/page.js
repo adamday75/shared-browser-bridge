@@ -1,3 +1,5 @@
+import { CdpConnectionError } from './session.js';
+
 /**
  * Real CDP page actions over the DevTools websocket. Milestone 1 only used
  * the CDP HTTP /json/* surface; page actions need the live protocol (Page,
@@ -39,15 +41,27 @@ function connectToTarget(webSocketDebuggerUrl, WebSocketImpl) {
     let nextId = 1;
     const pending = new Map();
     const listeners = new Set();
+    let opened = false;
+
+    function rejectPending(err) {
+      for (const { reject: rejectCmd } of pending.values()) rejectCmd(err);
+      pending.clear();
+    }
 
     ws.addEventListener(
       'error',
       () => {
+        const err = new CdpConnectionError('CDP websocket connection failed');
+        rejectPending(err);
         ws.close();
-        reject(new PageActionError('CDP websocket connection failed', 502));
+        if (!opened) reject(err);
       },
       { once: true }
     );
+
+    ws.addEventListener('close', () => {
+      rejectPending(new CdpConnectionError('CDP websocket closed'));
+    });
 
     ws.addEventListener('message', (event) => {
       let message;
@@ -69,12 +83,18 @@ function connectToTarget(webSocketDebuggerUrl, WebSocketImpl) {
     ws.addEventListener(
       'open',
       () => {
+        opened = true;
         resolve({
           send(method, params = {}) {
             const id = nextId++;
             const sent = new Promise((res, rej) => {
               pending.set(id, { resolve: res, reject: rej });
-              ws.send(JSON.stringify({ id, method, params }));
+              try {
+                ws.send(JSON.stringify({ id, method, params }));
+              } catch (err) {
+                pending.delete(id);
+                rej(new CdpConnectionError(`CDP websocket send failed: ${err.message}`));
+              }
             });
             return withTimeout(sent, COMMAND_TIMEOUT_MS, `CDP command "${method}" timed out`).catch(
               (err) => {
@@ -97,6 +117,9 @@ function connectToTarget(webSocketDebuggerUrl, WebSocketImpl) {
   });
   return withTimeout(connection, CONNECT_TIMEOUT_MS, 'CDP websocket connect timed out').catch((err) => {
     ws?.close();
+    if (err instanceof PageActionError && err.message === 'CDP websocket connect timed out') {
+      throw new CdpConnectionError(err.message);
+    }
     throw err;
   });
 }

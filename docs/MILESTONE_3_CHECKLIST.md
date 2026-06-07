@@ -57,7 +57,7 @@ Start simple.
 - [x] actions require fresh state check before resume after prior agent activity
 
 ### 7. Recovery behavior
-- [ ] clean error when browser disconnects
+- [x] clean error when browser disconnects
 - [ ] clean error when target tab disappears
 - [ ] `ERROR -> ATTACHED` recovery path
 - [ ] `ERROR -> DETACHED` cleanup path

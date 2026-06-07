@@ -1,4 +1,5 @@
 import { TransitionError } from '../state/store.js';
+import { CdpConnectionError, NoPageTargetError } from '../cdp/session.js';
 
 function gateForState(controlState, { session }) {
   if (!session || controlState === 'DETACHED') {
@@ -40,7 +41,15 @@ export function createHandoffGuard({ store, session }) {
     let result;
     try {
       result = await fn();
-      store.recordAgentAction(label, { status: result?.status ?? null, ok: result?.status === 200 });
+    } catch (err) {
+      if (err instanceof CdpConnectionError) {
+        // Chrome disconnected during the action. Drive into ERROR so the next
+        // caller gets an honest gate rather than a misleading ATTACHED state.
+        try { store.transition('ERROR', { reason: err.message }); } catch { /* ignore re-transition errors */ }
+        result = { status: 503, body: { ok: false, error: err.message } };
+      } else {
+        throw err;
+      }
     } finally {
       // Return to ATTACHED only if we were the one who transitioned in.
       // Guard against a concurrent external transition (e.g. pause) having
@@ -62,11 +71,19 @@ export function createHandoffGuard({ store, session }) {
       try {
         const target = await session.getFirstPageTarget();
         store.recordTargetTab({ id: target.id, url: target.url, title: target.title });
-      } catch {
-        // silently skip — no tab metadata is better than a crashed action
+      } catch (err) {
+        if (err instanceof CdpConnectionError) {
+          try { store.transition('ERROR', { reason: err.message }); } catch { /* ignore re-transition errors */ }
+          result = { status: 503, body: { ok: false, error: err.message } };
+        } else if (err instanceof NoPageTargetError) {
+          result = { status: 409, body: { ok: false, error: err.message } };
+        } else {
+          throw err;
+        }
       }
     }
 
+    store.recordAgentAction(label, { status: result?.status ?? null, ok: result?.status === 200 });
     return result;
   };
 }

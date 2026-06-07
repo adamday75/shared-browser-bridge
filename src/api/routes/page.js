@@ -8,6 +8,7 @@ import {
   getPageSnapshot,
   PageActionError,
 } from '../../cdp/page.js';
+import { NoPageTargetError } from '../../cdp/session.js';
 import { createHandoffGuard } from '../../guards/handoff.js';
 
 function badRequest(message) {
@@ -37,6 +38,9 @@ async function runPageAction(action) {
   } catch (err) {
     if (err instanceof PageActionError) {
       return { status: err.status, body: { ok: false, error: err.message } };
+    }
+    if (err instanceof NoPageTargetError) {
+      return { status: 409, body: { ok: false, error: err.message } };
     }
     throw err;
   }
