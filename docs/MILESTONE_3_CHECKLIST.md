@@ -52,7 +52,7 @@ Start simple.
 ### 6. Agent action gating
 - [x] actions blocked while `PAUSED`
 - [x] actions blocked or rejected while `HUMAN_ACTIVE`
-- [x] actions allowed in `AGENT_ACTIVE`
+- [x] overlapping agent actions rejected while `AGENT_ACTIVE`
 - [ ] actions require fresh state check before resume
 
 ### 7. Recovery behavior
