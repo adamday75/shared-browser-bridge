@@ -31,7 +31,7 @@ The user can:
 - [x] current state persisted in memory
 - [x] last successful attach metadata
 - [ ] current target tab metadata
-- [x] last agent action timestamp (field exists, not yet written)
+- [x] last agent action timestamp written on agent-driven routes
 - [x] last human activity timestamp (field exists, not yet written)
 - [x] pause reason / error reason fields
 
@@ -51,8 +51,8 @@ Start simple.
 
 ### 6. Agent action gating
 - [x] actions blocked while `PAUSED`
-- [ ] actions blocked or rejected while `HUMAN_ACTIVE`
-- [ ] actions allowed in `AGENT_ACTIVE`
+- [x] actions blocked or rejected while `HUMAN_ACTIVE`
+- [x] actions allowed in `AGENT_ACTIVE`
 - [ ] actions require fresh state check before resume
 
 ### 7. Recovery behavior
@@ -84,9 +84,9 @@ Start simple.
 - [x] block page actions when paused
 
 ### Phase B — state machine enforcement
-- [ ] centralize transition logic
-- [ ] add transition validation
-- [ ] add transition logging
+- [x] centralize transition logic
+- [x] add transition validation
+- [x] add transition logging
 
 ### Phase C — human takeover behavior
 - [ ] define v1 takeover heuristic
