@@ -83,12 +83,36 @@ Status note:
 ## Milestone 5 — Hardening
 Goal: make the repo publishable.
 
+### Build 1 — Local-first guardrails
+
 Deliverables:
-- [ ] localhost-only default guardrails
-- [ ] token option
+- [x] localhost-only default guardrails
+- [x] token option
 - [ ] better error handling
-- [ ] test coverage for core flows
-- [ ] publishable README examples
+- [x] test coverage for core flows
+- [x] publishable README examples
 
 Acceptance:
-- [ ] Repo is understandable and safe enough to share publicly
+- [x] Repo is understandable and safe enough to share publicly
+
+Status note:
+- Build 1 completed on 2026-06-08 after builder pass, skeptical review, one narrow README honesty correction, and final PASS.
+- Landed in `ac38ee2` (`Implement M5 Build 1 optional API token and hardening docs`).
+- Scope stayed intentionally small: optional `BRIDGE_API_TOKEN`, localhost-first posture preserved, focused server/auth tests, and clearer README/setup guidance.
+- Important honesty note: loopback binding reduces remote exposure by default, but does not prevent other local processes on the same machine from calling the bridge.
+
+### Build 2 — Error-shape and operator clarity
+
+Goal:
+Make failures easier to debug without changing the project’s local-first scope or turning the bridge into a larger framework.
+
+Target deliverables:
+- [ ] normalize API error response shape across route failures
+- [ ] document the main operator-visible failure modes (`DETACHED`, `PAUSED`, `ERROR`, auth failure, bad route/input)
+- [ ] add focused tests for representative 4xx/5xx paths
+- [ ] tighten README/docs examples around expected failure responses where useful
+
+Acceptance:
+- [ ] Common failure modes return predictable JSON structure and status codes
+- [ ] A new developer can tell the difference between auth failure, bad input, paused state, detached state, and internal error without reading source first
+- [ ] Changes stay small and do not expand into retries, rate limiting, remote deployment posture, or a larger auth system
