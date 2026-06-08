@@ -46,17 +46,22 @@ Detailed docs:
 - `docs/STATE_TRANSITIONS.md`
 
 Deliverables:
-- [ ] `POST /control/pause`
-- [ ] `POST /control/resume`
-- [ ] `GET /control/state`
-- [ ] basic state store
-- [ ] human activity timestamp tracking
-- [ ] explicit state machine enforcement
+- [x] `POST /control/pause`
+- [x] `POST /control/resume`
+- [x] `GET /control/state`
+- [x] basic state store
+- [x] human activity timestamp tracking
+- [x] explicit state machine enforcement
 
 Acceptance:
-- [ ] Human can interrupt
-- [ ] Agent can resume from current visible state
-- [ ] State transitions are explicit and logged
+- [x] Human can interrupt
+- [x] Agent can resume from current visible state
+- [x] State transitions are explicit and logged
+
+Status note:
+- Completed for v1 on 2026-06-07 after skeptical review plus live verification.
+- Known limitation remains documented: passive takeover detection does not fire during `AGENT_ACTIVE`.
+- See `docs/MILESTONE_3_CHECKLIST.md` for the detailed verified/open items.
 
 ## Milestone 4 — OpenClaw adapter
 Goal: prove the first client integration.
@@ -69,6 +74,12 @@ Deliverables:
 Acceptance:
 - [ ] OpenClaw can drive the bridge end-to-end
 - [ ] Demo is repeatable
+
+Recommended Build 1:
+- add a minimal OpenClaw-facing caller that maps a very small action set to the bridge (`/health`, `/tabs`, `/page/goto`, `/page/url`, `/control/pause`, `/control/resume`, `/control/state`)
+- keep it thin and local-first: no new orchestration layer, no auth redesign, no speculative abstractions
+- prove one repeatable end-to-end flow: attach/recover, goto a page, read state, pause, resume, confirm final state
+- document exact setup for Windows Chrome CDP + bridge + OpenClaw caller so the demo can be repeated without tribal knowledge
 
 ## Milestone 5 — Hardening
 Goal: make the repo publishable.
