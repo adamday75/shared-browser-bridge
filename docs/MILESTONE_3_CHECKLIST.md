@@ -72,11 +72,11 @@ Start simple.
 - [x] log rejected actions with reason
 
 ### 9. Verification targets
-- [ ] agent acts, then pauses successfully
-- [ ] human interrupts without agent fighting back
-- [ ] resume works from changed page state (adoptCurrentTarget path available; live test pending)
+- [x] agent acts, then pauses successfully — live-verified on 2026-06-07: `page/goto` succeeded in `ATTACHED`, `POST /control/pause` moved to `PAUSED`, and later `page/goto` was rejected while paused
+- [x] human interrupts without agent fighting back — live-verified on 2026-06-07: manual tab drift moved `ATTACHED -> PAUSED` with `passive-takeover-detected` and `lastTakeover` populated
+- [x] resume works from changed page state — live-verified on 2026-06-07: plain resume rejected observable drift, then `{"adoptCurrentTarget":true}` resumed cleanly and updated the baseline
 - [ ] tab switch during pause does not corrupt state
-- [x] disconnect produces honest error state — poller transitions to `ERROR` on `CdpConnectionError` or `NoPageTargetError` while either `ATTACHED` or `PAUSED`; consistent with resume and recovery route behavior
+- [x] disconnect produces honest error state — live-verified on 2026-06-07: closing the debug Chrome profile while `PAUSED` moved the bridge to `ERROR` with a surfaced CDP failure; consistent with resume and recovery route behavior
 
 ## Recommended implementation order
 
@@ -104,7 +104,7 @@ Start simple.
 - [x] startup seeds initial target baseline or enters ERROR if no page tab exists — poller can detect drift from first ATTACHED tick
 - [x] post-action baseline race fixed: baseline updated while in AGENT_ACTIVE, before ATTACHED transition; baseline write is also state-gated — a pause landing during the post-action target fetch is discarded, so post-pause browser reality cannot overwrite the baseline
 - [x] stale in-flight recover cannot undo a concurrent explicit detach/reset — ownership re-checked after async CDP work completes on both the success path (before `setAttached`) and the failure path (before `setAttachError`); if state changed, the route returns 409 without touching bridge state
-- [ ] resume from fresh page state
+- [x] resume from fresh page state — live-verified on 2026-06-07 via observable drift rejection plus explicit `adoptCurrentTarget` resume to a fresh baseline
 
 ## Acceptance criteria
 Milestone 3 is done when:
