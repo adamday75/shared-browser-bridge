@@ -8,7 +8,6 @@ import {
   getPageSnapshot,
   PageActionError,
 } from '../../cdp/page.js';
-import { NoPageTargetError } from '../../cdp/session.js';
 import { createHandoffGuard } from '../../guards/handoff.js';
 
 function badRequest(message) {
@@ -21,6 +20,14 @@ function tooLarge(message) {
 
 function bodyErrorResponse(error) {
   return error instanceof BodyTooLargeError ? tooLarge(error.message) : badRequest(error.message);
+}
+
+function reject(store, label, response) {
+  store.recordRejectedAction(label, {
+    status: response?.status ?? null,
+    reason: response?.body?.error ?? null,
+  });
+  return response;
 }
 
 async function parseJsonBody(req) {
@@ -39,9 +46,6 @@ async function runPageAction(action) {
     if (err instanceof PageActionError) {
       return { status: err.status, body: { ok: false, error: err.message } };
     }
-    if (err instanceof NoPageTargetError) {
-      return { status: 409, body: { ok: false, error: err.message } };
-    }
     throw err;
   }
 }
@@ -52,19 +56,19 @@ export function gotoRoute({ store, session }) {
   const guard = createHandoffGuard({ store, session });
   return async (req) => {
     const { body, error } = await parseJsonBody(req);
-    if (error) return bodyErrorResponse(error);
+    if (error) return reject(store, 'goto', bodyErrorResponse(error));
     if (!body || typeof body.url !== 'string' || !body.url.trim()) {
-      return badRequest('body must include a non-empty "url" string');
+      return reject(store, 'goto', badRequest('body must include a non-empty "url" string'));
     }
 
     let parsed;
     try {
       parsed = new URL(body.url.trim());
     } catch {
-      return badRequest('URL scheme not allowed: only http and https are permitted');
+      return reject(store, 'goto', badRequest('URL scheme not allowed: only http and https are permitted'));
     }
     if (!ALLOWED_URL_SCHEMES.has(parsed.protocol)) {
-      return badRequest('URL scheme not allowed: only http and https are permitted');
+      return reject(store, 'goto', badRequest('URL scheme not allowed: only http and https are permitted'));
     }
 
     return guard('goto', () => runPageAction(async () => {
@@ -78,9 +82,9 @@ export function clickRoute({ store, session }) {
   const guard = createHandoffGuard({ store, session });
   return async (req) => {
     const { body, error } = await parseJsonBody(req);
-    if (error) return bodyErrorResponse(error);
+    if (error) return reject(store, 'click', bodyErrorResponse(error));
     if (!body || typeof body.selector !== 'string' || !body.selector.trim()) {
-      return badRequest('body must include a non-empty "selector" string');
+      return reject(store, 'click', badRequest('body must include a non-empty "selector" string'));
     }
 
     return guard('click', () => runPageAction(async () => {
@@ -94,12 +98,12 @@ export function typeRoute({ store, session }) {
   const guard = createHandoffGuard({ store, session });
   return async (req) => {
     const { body, error } = await parseJsonBody(req);
-    if (error) return bodyErrorResponse(error);
+    if (error) return reject(store, 'type', bodyErrorResponse(error));
     if (!body || typeof body.selector !== 'string' || !body.selector.trim()) {
-      return badRequest('body must include a non-empty "selector" string');
+      return reject(store, 'type', badRequest('body must include a non-empty "selector" string'));
     }
     if (typeof body.text !== 'string') {
-      return badRequest('body must include a "text" string');
+      return reject(store, 'type', badRequest('body must include a "text" string'));
     }
 
     return guard('type', () => runPageAction(async () => {

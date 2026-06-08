@@ -9,13 +9,13 @@ import {
   textRoute,
   snapshotRoute,
 } from './routes/page.js';
-import { pauseRoute, resumeRoute, controlStateRoute } from './routes/control.js';
+import { pauseRoute, resumeRoute, recoverRoute, detachRoute, controlStateRoute } from './routes/control.js';
 
 /**
  * Boring local HTTP server: a fixed table of "METHOD path" -> async handler
  * that returns { status, body }. No framework, no remote exposure.
  */
-export function createServer({ store, session, logger = console }) {
+export function createServer({ store, session, recoverSession, setSession, clearSession, logger = console }) {
   const routes = {
     'GET /health': healthRoute({ store }),
     'GET /tabs': tabsRoute({ store, session }),
@@ -27,6 +27,8 @@ export function createServer({ store, session, logger = console }) {
     'GET /page/snapshot': snapshotRoute({ store, session }),
     'POST /control/pause': pauseRoute({ store }),
     'POST /control/resume': resumeRoute({ store, session }),
+    'POST /control/recover': recoverRoute({ store, recoverSession, setSession }),
+    'POST /control/detach': detachRoute({ store, clearSession }),
     'GET /control/state': controlStateRoute({ store }),
   };
 

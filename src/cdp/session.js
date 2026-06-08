@@ -23,9 +23,14 @@ export function createCdpSession({ endpoint, fetchImpl = fetch }) {
   }
 
   async function getVersion() {
-    const response = await fetchImpl(`${endpoint}/json/version`);
+    let response;
+    try {
+      response = await fetchImpl(`${endpoint}/json/version`);
+    } catch (err) {
+      throw new CdpConnectionError(`CDP connection failed: ${err.message}`);
+    }
     if (!response.ok) {
-      throw new Error(`CDP version check failed with status ${response.status}`);
+      throw new CdpConnectionError(`CDP version check failed with status ${response.status}`);
     }
     return response.json();
   }

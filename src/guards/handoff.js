@@ -24,7 +24,10 @@ export function createHandoffGuard({ store, session }) {
   return async function withAgentAction(label, fn) {
     const { controlState } = store.getState();
     const gated = gateForState(controlState, { session });
-    if (gated) return gated;
+    if (gated) {
+      store.recordRejectedAction(label, { status: gated.status, reason: gated.body?.error ?? null });
+      return gated;
+    }
 
     // Only ATTACHED may begin a fresh agent action sequence.
     const needsTransition = controlState === 'ATTACHED';
@@ -33,8 +36,10 @@ export function createHandoffGuard({ store, session }) {
         store.transition('AGENT_ACTIVE');
       } catch (err) {
         if (!(err instanceof TransitionError)) throw err;
-        return gateForState(store.getState().controlState, { session })
+        const rejected = gateForState(store.getState().controlState, { session })
           ?? { status: 409, body: { ok: false, error: err.message } };
+        store.recordRejectedAction(label, { status: rejected.status, reason: rejected.body?.error ?? null });
+        return rejected;
       }
     }
 
@@ -47,38 +52,72 @@ export function createHandoffGuard({ store, session }) {
         // caller gets an honest gate rather than a misleading ATTACHED state.
         try { store.transition('ERROR', { reason: err.message }); } catch { /* ignore re-transition errors */ }
         result = { status: 503, body: { ok: false, error: err.message } };
+      } else if (err instanceof NoPageTargetError) {
+        store.clearTargetTab();
+        try { store.transition('ERROR', { reason: err.message }); } catch { /* ignore re-transition errors */ }
+        result = {
+          status: 409,
+          body: { ok: false, error: err.message, controlState: 'ERROR' },
+        };
       } else {
+        // Unexpected error: exit AGENT_ACTIVE before re-throwing so the bridge
+        // does not get stuck. Baseline is not updated — we do not know where
+        // the browser ended up.
+        if (needsTransition && store.getState().controlState === 'AGENT_ACTIVE') {
+          try { store.transition('ATTACHED'); } catch (transErr) {
+            if (!(transErr instanceof TransitionError)) throw transErr;
+          }
+        }
         throw err;
       }
-    } finally {
-      // Return to ATTACHED only if we were the one who transitioned in.
-      // Guard against a concurrent external transition (e.g. pause) having
-      // already moved state elsewhere.
-      if (needsTransition && store.getState().controlState === 'AGENT_ACTIVE') {
+    }
+
+    // Post-action: update the target baseline BEFORE transitioning to ATTACHED.
+    // The poller only fires when controlState === 'ATTACHED'. Staying in
+    // AGENT_ACTIVE here means a poll tick cannot misread the just-completed
+    // navigation as passive takeover because of baseline update timing.
+    if (needsTransition && store.getState().controlState === 'AGENT_ACTIVE') {
+      if (result?.status === 200) {
+        try {
+          const target = await session.getFirstPageTarget();
+          // Only write the baseline if we still own AGENT_ACTIVE. A concurrent
+          // pause that landed during this fetch must not record post-pause browser
+          // reality as the new baseline — that would mask drift on the next resume.
+          if (store.getState().controlState === 'AGENT_ACTIVE') {
+            store.recordTargetTab({ id: target.id, url: target.url, title: target.title });
+          }
+        } catch (err) {
+          if (err instanceof CdpConnectionError) {
+            try { store.transition('ERROR', { reason: err.message }); } catch { /* ignore re-transition errors */ }
+            store.recordAgentAction(label, { status: result?.status ?? null, ok: false });
+            return { status: 503, body: { ok: false, error: err.message } };
+          } else if (err instanceof NoPageTargetError) {
+            store.clearTargetTab();
+            try { store.transition('ERROR', { reason: err.message }); } catch { /* ignore re-transition errors */ }
+            store.recordAgentAction(label, { status: result?.status ?? null, ok: false });
+            return {
+              status: 409,
+              body: {
+                ok: false,
+                error: err.message,
+                controlState: 'ERROR',
+                actionMayHaveCompleted: true,
+              },
+            };
+          } else {
+            throw err;
+          }
+        }
+      }
+      // Re-read state after the async baseline fetch. A concurrent external
+      // event (e.g. an explicit pause) may have moved us out of AGENT_ACTIVE
+      // while the target fetch was in flight. Only return to ATTACHED if we
+      // still own the state slot — same guard the original finally block used.
+      if (store.getState().controlState === 'AGENT_ACTIVE') {
         try {
           store.transition('ATTACHED');
         } catch (err) {
           if (!(err instanceof TransitionError)) throw err;
-        }
-      }
-    }
-
-    // Record the tab baseline the agent just operated on so later resume logic
-    // can compare against the same observable CDP surface. If the bridge was
-    // externally paused before we got here, do not overwrite the baseline with
-    // post-pause browser reality.
-    if (store.getState().controlState === 'ATTACHED') {
-      try {
-        const target = await session.getFirstPageTarget();
-        store.recordTargetTab({ id: target.id, url: target.url, title: target.title });
-      } catch (err) {
-        if (err instanceof CdpConnectionError) {
-          try { store.transition('ERROR', { reason: err.message }); } catch { /* ignore re-transition errors */ }
-          result = { status: 503, body: { ok: false, error: err.message } };
-        } else if (err instanceof NoPageTargetError) {
-          result = { status: 409, body: { ok: false, error: err.message } };
-        } else {
-          throw err;
         }
       }
     }
