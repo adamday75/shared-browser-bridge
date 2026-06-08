@@ -76,6 +76,10 @@ node scripts/demo-openclaw-flow.mjs
 
 The script requires the bridge to be running with Chrome attached. It does **not** launch Chrome or start the bridge.
 
+### Execution environment note
+
+For the current Windows-hosted bridge setup, the live demo was verified from **Windows PowerShell**, not WSL. The default adapter base URL is `http://127.0.0.1:7820`, which resolves correctly from Windows where the bridge listens, but not from WSL unless you explicitly route to the Windows host address.
+
 ### Required starting state
 
 The demo handles three possible start states automatically:
@@ -102,6 +106,16 @@ Any other state (e.g. a mid-transition state) is not handled and will likely cau
 When starting from PAUSED, a `resume (startup)` line appears before `goto`. When starting from ERROR or DETACHED, a `recover` line appears instead.
 
 Exit code 0 on success, 1 if any required step fails.
+
+## Live verification status
+
+Live-verified on 2026-06-08 from **Windows PowerShell** with real Chrome/CDP and the real bridge:
+
+- `ATTACHED` start state: passed end-to-end
+- `PAUSED` start state: passed end-to-end, including `resume (startup)` normalization
+- the demo now exits cleanly with exit code `0` after replacing forced `process.exit(...)` with `process.exitCode = ...`
+
+`ERROR` / `DETACHED` start-state normalization remains implemented and test-covered, but was not live-exercised in the final M4 Build 2 run.
 
 ## Limitations
 

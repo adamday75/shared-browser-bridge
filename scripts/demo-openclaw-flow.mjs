@@ -167,6 +167,5 @@ export async function runDemo({
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
-  const exitCode = await runDemo();
-  process.exit(exitCode);
+  process.exitCode = await runDemo();
 }

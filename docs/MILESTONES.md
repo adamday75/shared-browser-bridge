@@ -67,19 +67,18 @@ Status note:
 Goal: prove the first client integration.
 
 Deliverables:
-- [ ] thin OpenClaw caller/client
-- [ ] first end-to-end demo flow
-- [ ] docs for setup + usage
+- [x] thin OpenClaw caller/client
+- [x] first end-to-end demo flow
+- [x] docs for setup + usage
 
 Acceptance:
-- [ ] OpenClaw can drive the bridge end-to-end
-- [ ] Demo is repeatable
+- [x] OpenClaw can drive the bridge end-to-end
+- [x] Demo is repeatable
 
-Recommended Build 1:
-- add a minimal OpenClaw-facing caller that maps a very small action set to the bridge (`/health`, `/tabs`, `/page/goto`, `/page/url`, `/control/pause`, `/control/resume`, `/control/state`)
-- keep it thin and local-first: no new orchestration layer, no auth redesign, no speculative abstractions
-- prove one repeatable end-to-end flow: attach/recover, goto a page, read state, pause, resume, confirm final state
-- document exact setup for Windows Chrome CDP + bridge + OpenClaw caller so the demo can be repeated without tribal knowledge
+Status note:
+- Completed on 2026-06-08 after skeptical review, automated tests, and live verification from Windows PowerShell against the real bridge + Chrome/CDP lane.
+- Important environment note: the default adapter base URL works from Windows where the bridge listens on `127.0.0.1:7820`; WSL requires explicit routing to the Windows host if you want the same demo to run there unchanged.
+- See `docs/MILESTONE_4_BUILD_1.md` for the concrete Build 1 surface, runtime requirements, and live verification notes.
 
 ## Milestone 5 — Hardening
 Goal: make the repo publishable.
