@@ -7,6 +7,7 @@ import { resolveChromeTarget } from './chrome/launcher.js';
 
 const HOST = process.env.BRIDGE_HOST || '127.0.0.1';
 const PORT = Number(process.env.BRIDGE_PORT || 7820);
+const BRIDGE_API_TOKEN = process.env.BRIDGE_API_TOKEN || null;
 const CDP_HOST = process.env.CDP_HOST || '127.0.0.1';
 const CDP_PORT = Number(process.env.CDP_PORT || 9222);
 const CDP_ALLOW_REMOTE_LAUNCH = process.env.CDP_ALLOW_REMOTE_LAUNCH === '1';
@@ -59,6 +60,7 @@ async function main() {
     recoverSession,
     setSession: (nextSession) => session.setCurrent(nextSession),
     clearSession: () => session.clearCurrent(),
+    apiToken: BRIDGE_API_TOKEN,
   });
   server.listen(PORT, HOST, () => {
     console.log(`[bridge] shared-browser-bridge listening on http://${HOST}:${PORT}`);

@@ -10,12 +10,17 @@ import {
   snapshotRoute,
 } from './routes/page.js';
 import { pauseRoute, resumeRoute, recoverRoute, detachRoute, controlStateRoute } from './routes/control.js';
+import { checkToken } from './auth.js';
 
 /**
  * Boring local HTTP server: a fixed table of "METHOD path" -> async handler
  * that returns { status, body }. No framework, no remote exposure.
+ *
+ * Pass apiToken (from BRIDGE_API_TOKEN env var) to require a bearer token on
+ * every request. Omit it (or pass null/undefined) for the default open-local
+ * behavior.
  */
-export function createServer({ store, session, recoverSession, setSession, clearSession, logger = console }) {
+export function createServer({ store, session, recoverSession, setSession, clearSession, logger = console, apiToken = null }) {
   const routes = {
     'GET /health': healthRoute({ store }),
     'GET /tabs': tabsRoute({ store, session }),
@@ -36,6 +41,14 @@ export function createServer({ store, session, recoverSession, setSession, clear
     const { pathname } = new URL(req.url, 'http://localhost');
     const key = `${req.method} ${pathname}`;
     const handler = routes[key];
+
+    const authFailure = checkToken(req, apiToken);
+    if (authFailure) {
+      logger.log(`[api] 401 ${key}`);
+      res.writeHead(401, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(authFailure.body));
+      return;
+    }
 
     if (!handler) {
       logger.log(`[api] 404 ${key}`);
