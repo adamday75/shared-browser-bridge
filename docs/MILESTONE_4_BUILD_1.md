@@ -62,7 +62,7 @@ All methods return `{ status, body }`. Status mirrors the HTTP status code. Body
 | `goto({ url })` | POST /page/goto | Navigate to URL |
 | `url()` | GET /page/url | Current page URL |
 | `pause({ reason? })` | POST /control/pause | Pause agent control |
-| `resume({ force?, adoptCurrentTarget? })` | POST /control/resume | Resume agent control |
+| `resume({ force?, adoptCurrentTarget?, adoptTargetId? })` | POST /control/resume | Resume agent control |
 | `state()` | GET /control/state | Full control state |
 | `recover()` | POST /control/recover | Re-attach after ERROR or DETACHED |
 

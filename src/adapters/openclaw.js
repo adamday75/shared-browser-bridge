@@ -46,10 +46,11 @@ export function createOpenClawAdapter({
     return request('POST', '/control/pause', body);
   }
 
-  async function resume({ force, adoptCurrentTarget } = {}) {
+  async function resume({ force, adoptCurrentTarget, adoptTargetId } = {}) {
     const body = {};
     if (force !== undefined) body.force = force;
     if (adoptCurrentTarget !== undefined) body.adoptCurrentTarget = adoptCurrentTarget;
+    if (adoptTargetId !== undefined) body.adoptTargetId = adoptTargetId;
     return request('POST', '/control/resume', body);
   }
 

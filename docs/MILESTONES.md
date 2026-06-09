@@ -185,9 +185,11 @@ Acceptance:
 
 Status note:
 - Build 3 completed on 2026-06-09. Investigation confirmed Outcome B — honest fallback.
+- Correction applied (post-review): `adoptTargetId` was missing from `src/adapters/openclaw.js` `resume()` despite being documented as the reliable explicit workflow. The parameter is now wired through, and the adapter test for `pause` / `resume` field serialization was extended to cover it.
 - No retries, no auto-healing, no fake focus detection added.
-- 71/71 tests pass across all test files. New file: `tests/focused-target.test.js` (8 tests).
-- What remains intentionally unproven: true focused-tab detection (requires Chrome extension or per-tab WebSocket `document.hasFocus()` polling, both out of scope for this build).
+- Builder reported 71/71 tests passing across all test files. New file: `tests/focused-target.test.js` (8 tests). The `adoptTargetId` serialisation path is covered by an extended assertion in `tests/openclaw-adapter.test.js`. Independent re-review in this sandbox could not re-run the full suite because localhost test-server binds return `EPERM` here.
+- What is proven: server-side `adoptTargetId` semantics (via `tests/focused-target.test.js`); adapter correctly serialises `adoptTargetId` into the request body (via `tests/openclaw-adapter.test.js`).
+- What remains intentionally unproven: round-trip adapter→server integration with `adoptTargetId` (no combined integration test); true focused-tab detection (requires Chrome extension or per-tab WebSocket `document.hasFocus()` polling, both out of scope for this build).
 
 ### Build 1 — Structured drift and recovery observability
 

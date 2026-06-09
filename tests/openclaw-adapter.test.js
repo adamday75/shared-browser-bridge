@@ -87,6 +87,7 @@ test('pause and resume only send supplied fields', async () => {
   await adapter.resume({ force: true });
   await adapter.resume({ adoptCurrentTarget: true });
   await adapter.resume({ force: true, adoptCurrentTarget: true });
+  await adapter.resume({ adoptTargetId: 'tab-abc' });
 
   assert.equal(calls[0].body, JSON.stringify({}));
   assert.equal(calls[1].body, JSON.stringify({ reason: 'demo' }));
@@ -94,6 +95,7 @@ test('pause and resume only send supplied fields', async () => {
   assert.equal(calls[3].body, JSON.stringify({ force: true }));
   assert.equal(calls[4].body, JSON.stringify({ adoptCurrentTarget: true }));
   assert.equal(calls[5].body, JSON.stringify({ force: true, adoptCurrentTarget: true }));
+  assert.equal(calls[6].body, JSON.stringify({ adoptTargetId: 'tab-abc' }));
 });
 
 test('transport errors propagate to caller', async () => {
