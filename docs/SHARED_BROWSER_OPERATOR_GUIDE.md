@@ -156,6 +156,12 @@ POST /page/goto { url }      → now driving the adopted tab
 
 This is the reliable multi-tab workflow. Do not navigate or act on a tab you haven't explicitly adopted.
 
+**Runnable proof script:** `scripts/demo-explicit-target-flow.mjs` walks this sequence (health → enumerate tabs → select deterministically → adopt with `adoptTargetId` → verify `adoptedTarget.id` in response → post-adoption safe read) and prints a PASS/FAIL summary. PASS confirms deterministic selection and that the adopt response body confirms the correct tab id. It does not prove that the subsequent `GET /page/url` read operated on the adopted tab — in a multi-tab setup that read returns the first CDP-listed target, which may differ. Run it to confirm explicit target selection works in a live setup:
+
+```sh
+node scripts/demo-explicit-target-flow.mjs --match-url "example.com"
+```
+
 ### Blocked resume — TARGET_DRIFT
 
 ```

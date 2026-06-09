@@ -188,6 +188,17 @@ CDP_HOST=172.22.96.1 node src/index.js
 
 This is a tested pattern from live usage. The bridge will refuse to launch a local Chrome as a fallback for a non-local `CDP_HOST` unless you explicitly set `CDP_ALLOW_REMOTE_LAUNCH=1` — that guard prevents silently controlling the wrong browser.
 
+## Explicit target proof flow
+
+To verify the explicit-target selection workflow (`GET /tabs` → select → `adoptTargetId`):
+
+```sh
+node scripts/demo-explicit-target-flow.mjs --match-url "example.com"
+# or: --target-id <id>  or  --match-title <title>
+```
+
+This script enumerates open tabs, selects a target deterministically, resumes with `adoptTargetId`, and verifies that the response body's `adoptedTarget.id` matches the intended tab. A PASS confirms: deterministic selection, a successful adopt response with matching `adoptedTarget.id`, and a successful post-adoption safe read. PASS does not mean the `GET /page/url` read step read the adopted tab specifically — with multiple tabs open, that read returns the first CDP-listed target which may differ. Exits 0 on PASS, 1 on FAIL.
+
 ## Docs
 
 - `docs/SHARED_BROWSER_OPERATOR_GUIDE.md` — primary operator/agent usage reference

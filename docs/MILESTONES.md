@@ -238,3 +238,28 @@ Status note:
 - The skeptical review correctly rejected the first pass because `currentTargetId` and leftover “active tab” wording implied stronger semantics than the bridge really has; the correction pass renamed the field to `baselineTargetId` and aligned the spec.
 - What is proven: `/tabs` response shape and representative error paths; the narrow `adoptTargetId` write/no-write behavior under success and `TARGET_NOT_FOUND`; the canonical operator guide and README/spec language are internally aligned on baseline semantics.
 - What remains intentionally unproven/out of scope: true focused-tab detection; broader adapter→server integration coverage for `adoptTargetId`; any architecture beyond the explicit-target workflow hardening.
+
+## Milestone 8 — Real operator demo + integration proof
+
+Goal: add one narrow, repeatable proof lane for the explicit-target workflow so future operators/agents can run a concrete demo instead of manually assembling curl calls.
+
+Target deliverables:
+- [x] add one primary demo script for explicit target selection
+- [x] keep the proof action read-oriented and low-risk
+- [x] add focused tests for the demo script behavior
+- [x] point README/operator guide to the demo as the main practical proof flow
+- [x] document the proof limitations honestly
+
+Acceptance:
+- [x] operators/agents can run one repeatable proof flow for `GET /tabs` → target selection → `adoptTargetId` → post-adoption safe read
+- [x] PASS requires deterministic selection and a successful adopt response confirming `adoptedTarget.id`
+- [x] docs do not imply that the post-adoption read proves the adopted tab itself was read in multi-tab situations
+- [x] the build stays small and does not expand into focused-tab architecture or broader orchestration
+
+Status note:
+- Completed on 2026-06-09 after builder pass, skeptical review, and one narrow correction pass for proof honesty.
+- New primary artifact: `scripts/demo-explicit-target-flow.mjs`.
+- New test file: `tests/demo-explicit-target-flow.test.js` (19 tests).
+- The skeptical review correctly rejected the first pass because the proof wording overclaimed what the read step demonstrated, the script could PASS without `adoptedTarget`, and token support had drifted into the shared adapter surface. The correction pass made missing `adoptedTarget` a hard FAIL, moved token handling local to the script, and tightened README/operator-guide wording.
+- What is proven: deterministic target selection; successful explicit adoption confirmed by matching `adoptedTarget.id` in the resume response; successful post-adoption safe read; the script behavior across representative success/failure branches.
+- What remains intentionally unproven/out of scope: that `GET /page/url` read the adopted tab specifically in multi-tab setups; any true focused-tab awareness; live end-to-end execution in this sandbox without a real running bridge + Chrome.
