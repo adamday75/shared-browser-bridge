@@ -89,8 +89,9 @@ All error responses share this shape:
 | `NO_PAGE_TARGET` | 409 | No open browser page tabs to act on |
 | `PAGE_ACTION_ERROR` | 404/502/504 | Page action failed (element not found, navigation error, or timeout) |
 | `STATE_CONFLICT` | 409 | State transition rejected; operation not allowed in current state, or concurrent race condition |
-| `TARGET_DRIFT` | 409 | Observable browser target changed since the last agent baseline; pass `adoptCurrentTarget` or `force` to resume |
-| `MISSING_BASELINE` | 409 | Resume blocked because agent previously acted but no observable target baseline was recorded; pass `adoptCurrentTarget` or `force` |
+| `TARGET_DRIFT` | 409 | Observable browser target changed since the last agent baseline; pass `adoptCurrentTarget`, `adoptTargetId`, or `force` to resume |
+| `MISSING_BASELINE` | 409 | Resume blocked because agent previously acted but no observable target baseline was recorded; pass `adoptCurrentTarget`, `adoptTargetId`, or `force` |
+| `TARGET_NOT_FOUND` | 409 | `adoptTargetId` was passed but no open tab has that id; response includes `availableTargets` listing open tabs |
 | `INTERNAL_ERROR` | 500 | Unexpected error in the bridge process |
 
 ### State-gated rejections
@@ -109,7 +110,7 @@ Call `GET /control/state` at any time to inspect the full bridge state.
 
 ## Drift and recovery introspection
 
-When `POST /control/resume` detects that the observable browser target changed since the last agent baseline, it returns `TARGET_DRIFT` with a structured `drift` object:
+When `POST /control/resume` detects that the observable browser target changed since the last agent baseline, it returns `TARGET_DRIFT` with a structured `drift` object and an `availableTargets` list:
 
 ```json
 {
@@ -124,18 +125,24 @@ When `POST /control/resume` detects that the observable browser target changed s
     "currentTabId": "tab-2",
     "currentUrl": "http://other.com",
     "currentTitle": "Different Page"
-  }
+  },
+  "availableTargets": [
+    { "id": "tab-2", "url": "http://other.com", "title": "Different Page" }
+  ]
 }
 ```
 
-The `drift` fields reflect what the bridge recorded at the time of the last agent baseline (`expected*`) vs. what CDP reports now (`current*`). They are informational — the client decides what to do.
+The `drift` fields reflect what the bridge recorded at the time of the last agent baseline (`expected*`) vs. what CDP reports now (`current*`). The `availableTargets` array lists all open page tabs at the moment of the check — use it to pick a specific target without a separate `GET /tabs` call.
+
+**Focused-tab limitation:** CDP's HTTP `/json/list` surface does not expose which tab the human has focused. The bridge cannot detect tab-focus switches where the baseline tab is still open and at the same URL. Drift detection fires only when the first listed page target has a different id or URL than the stored baseline. To switch targets deliberately, use `GET /tabs` to see what is open and pass `adoptTargetId` on resume.
 
 **How a client should react based on the blocking code:**
 
 | Code | Meaning | Suggested action |
 |---|---|---|
-| `TARGET_DRIFT` | Browser tab or URL changed since agent baseline | Inspect `drift` fields; pass `{"adoptCurrentTarget":true}` to accept the new state, or `{"force":true}` to resume without updating the baseline |
-| `MISSING_BASELINE` | Agent previously acted but no observable baseline was recorded | Pass `{"adoptCurrentTarget":true}` to take the current tab as the new baseline, or `{"force":true}` to resume unconditionally |
+| `TARGET_DRIFT` | Browser tab or URL changed since agent baseline | Inspect `drift` and `availableTargets`; pass `{"adoptCurrentTarget":true}` to accept the new state, `{"adoptTargetId":"<id>"}` to pick a specific tab, or `{"force":true}` to resume without updating the baseline |
+| `TARGET_NOT_FOUND` | `adoptTargetId` id not found among open tabs | Check `availableTargets` in the response for valid ids |
+| `MISSING_BASELINE` | Agent previously acted but no observable baseline was recorded | Pass `{"adoptCurrentTarget":true}` to take the current tab as the new baseline, `{"adoptTargetId":"<id>"}` to pick a specific tab, or `{"force":true}` to resume unconditionally |
 | `NO_PAGE_TARGET` | No open browser page tabs found | Open a page in Chrome, then call `POST /control/recover`; or pass `{"adoptCurrentTarget":true}` to accept the current target once a page is available |
 | `CDP_ERROR` | Chrome connection lost | Check that Chrome is running with `--remote-debugging-port`; call `POST /control/recover` |
 | `STATE_CONFLICT` | Wrong state for this operation | Call `GET /control/state` to check current state |

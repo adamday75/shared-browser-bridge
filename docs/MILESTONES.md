@@ -156,6 +156,39 @@ Status note:
 - No retries, auto-healing, orchestration, or policy engine added.
 - What remains intentionally unproven: persisted real-store state after mutation (the concrete in-memory store is not exercised here), concurrent timing at the OS thread level, and any recovery paths not enumerated above.
 
+### Build 3 — Focused-tab trust / active target semantics
+
+Goal: investigate whether true focused/foreground tab detection is technically available for the Windows Chrome + WSL bridge setup, and implement the smallest honest improvement based on what is actually possible.
+
+Investigation outcome:
+- CDP's HTTP `/json/list` surface has no concept of focused tab. The ordering is browser-internal and not guaranteed to reflect human focus. This is a fundamental characteristic of the CDP HTTP API — not a bug in the implementation.
+- CDP WebSocket `Target.targetInfoChanged` events do not expose human tab-focus changes.
+- JavaScript `document.hasFocus()` evaluation via WebSocket CDP per-tab would work but requires establishing WebSocket connections to every tab — a larger architectural change not in scope.
+- **Outcome B (honest fallback)** was selected. True focused-tab detection is not technically clean or reliable through the current HTTP-only CDP setup.
+
+Target deliverables:
+- [x] investigate real focused/foreground tab detectability for this setup
+- [x] document the limitation honestly in code, STATE_TRANSITIONS.md, and README
+- [x] add `adoptTargetId` to `POST /control/resume` — explicit target selection by CDP tab id
+- [x] add `availableTargets` array to `TARGET_DRIFT` response — full tab list without extra round-trip
+- [x] add `TARGET_NOT_FOUND` error code with `availableTargets` in body when `adoptTargetId` id is missing
+- [x] focused tests for new paths (8 tests in `tests/focused-target.test.js`)
+- [x] update existing drift-check tests to use `listTabs` mock (the path now uses `listTabs` instead of `getFirstPageTarget`)
+
+Acceptance:
+- [x] `adoptTargetId` with a valid id resumes and records that specific tab as the new baseline
+- [x] `adoptTargetId` with an unknown id returns `TARGET_NOT_FOUND` with `availableTargets`, stays PAUSED
+- [x] `TARGET_DRIFT` response now includes `availableTargets` array
+- [x] `adoptTargetId` is mutually exclusive with `adoptCurrentTarget` and `force`
+- [x] docs state explicitly that focused-tab detection is not available via CDP HTTP
+- [x] docs describe the explicit `GET /tabs` → `adoptTargetId` workflow as the reliable alternative
+
+Status note:
+- Build 3 completed on 2026-06-09. Investigation confirmed Outcome B — honest fallback.
+- No retries, no auto-healing, no fake focus detection added.
+- 71/71 tests pass across all test files. New file: `tests/focused-target.test.js` (8 tests).
+- What remains intentionally unproven: true focused-tab detection (requires Chrome extension or per-tab WebSocket `document.hasFocus()` polling, both out of scope for this build).
+
 ### Build 1 — Structured drift and recovery observability
 
 Target deliverables:

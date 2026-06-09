@@ -59,10 +59,15 @@ export function createCdpSession({ endpoint, fetchImpl = fetch }) {
   }
 
   /**
-   * CDP's HTTP /json/list surface has no concept of "focused" tab (noted in
-   * the Milestone 1 implementation note), so page actions operate on the
-   * first open page target. This is an honest stand-in for active-tab
-   * tracking, which belongs with the Milestone 3 handoff/state work.
+   * Returns the first open page target from CDP's /json/list.
+   *
+   * CDP's HTTP /json/list surface does not expose which tab the human is
+   * currently focused on. The ordering is browser-internal and not guaranteed
+   * to reflect human focus or tab activation order. This returns whatever
+   * Chrome lists first among open page targets.
+   *
+   * For explicit target selection by id, enumerate all available targets with
+   * listTabs() and pass the chosen id as adoptTargetId on POST /control/resume.
    */
   async function getFirstPageTarget() {
     const targets = await listPageTargets();

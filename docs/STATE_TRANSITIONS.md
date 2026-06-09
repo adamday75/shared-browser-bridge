@@ -101,6 +101,7 @@ Unsafe or broken state; action execution must stop.
 - No detection if no `targetTab` baseline exists. At startup this is prevented: the bridge seeds an initial baseline immediately after attaching, or enters `ERROR` if no page tab is available. The blind spot can still occur if the baseline is cleared by a `NoPageTargetError` during operation.
 - Polling lag up to `intervalMs` (default 2 s).
 - Only checks the first page target; does not track all open tabs.
+- **No focused-tab detection.** CDP's HTTP `/json/list` surface does not expose which tab the human has focused. Switching tabs without navigating or closing the baseline tab does not trigger drift detection. Use `GET /tabs` to enumerate open tabs and `{"adoptTargetId":"<id>"}` on `POST /control/resume` to explicitly select a different target.
 
 **Post-action baseline race protection:** `handoff.js` updates the target baseline *while still in `AGENT_ACTIVE`* (before transitioning to `ATTACHED`). The poller only fires in `ATTACHED`, so it cannot misread the just-completed navigation as passive takeover because of baseline update timing. The baseline write itself is also state-gated: if a concurrent `POST /control/pause` lands during the post-action target fetch, the fetched result is discarded — post-pause browser reality is never recorded as the new baseline.
 

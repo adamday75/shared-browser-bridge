@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import { createServer } from '../src/api/server.js';
-import { NoPageTargetError } from '../src/cdp/session.js';
 
 function makeStore(stateOverrides = {}) {
   const state = {
@@ -79,9 +78,7 @@ test('TARGET_DRIFT: drift object includes expectedTitle and currentTitle', async
     targetTab: { id: 'tab-1', url: 'http://example.com', title: 'Example Page' },
   });
   const session = {
-    getFirstPageTarget: async () => ({
-      id: 'tab-2', url: 'http://other.com', title: 'Other Page',
-    }),
+    listTabs: async () => [{ id: 'tab-2', url: 'http://other.com', title: 'Other Page' }],
   };
   const { server, port } = await startServer({ store, session });
   t.after(() => server.close());
@@ -97,17 +94,20 @@ test('TARGET_DRIFT: drift object includes expectedTitle and currentTitle', async
   assert.equal(res.body.drift.currentUrl, 'http://other.com');
   assert.equal(res.body.drift.currentTitle, 'Other Page');
   assert.equal(res.body.controlState, 'PAUSED');
+  assert.ok(Array.isArray(res.body.availableTargets), 'availableTargets must be an array');
+  assert.equal(res.body.availableTargets.length, 1);
+  assert.equal(res.body.availableTargets[0].id, 'tab-2');
+  assert.equal(res.body.availableTargets[0].url, 'http://other.com');
+  assert.equal(res.body.availableTargets[0].title, 'Other Page');
 });
 
-test('TARGET_DRIFT: url-only drift includes both title fields', async (t) => {
+test('TARGET_DRIFT: url-only drift includes both title fields and availableTargets', async (t) => {
   const store = makeStore({
     controlState: 'PAUSED',
     targetTab: { id: 'tab-1', url: 'http://example.com', title: 'Before' },
   });
   const session = {
-    getFirstPageTarget: async () => ({
-      id: 'tab-1', url: 'http://example.com/other', title: 'After',
-    }),
+    listTabs: async () => [{ id: 'tab-1', url: 'http://example.com/other', title: 'After' }],
   };
   const { server, port } = await startServer({ store, session });
   t.after(() => server.close());
@@ -117,6 +117,8 @@ test('TARGET_DRIFT: url-only drift includes both title fields', async (t) => {
   assert.equal(res.body.code, 'TARGET_DRIFT');
   assert.equal(res.body.drift.expectedTitle, 'Before');
   assert.equal(res.body.drift.currentTitle, 'After');
+  assert.ok(Array.isArray(res.body.availableTargets));
+  assert.equal(res.body.availableTargets[0].id, 'tab-1');
 });
 
 test('TARGET_DRIFT: expectedTitle and currentTitle are null when tabs lack a title', async (t) => {
@@ -125,9 +127,7 @@ test('TARGET_DRIFT: expectedTitle and currentTitle are null when tabs lack a tit
     targetTab: { id: 'tab-1', url: 'http://example.com' }, // no title property
   });
   const session = {
-    getFirstPageTarget: async () => ({
-      id: 'tab-1', url: 'http://other.com', // url changed, no title
-    }),
+    listTabs: async () => [{ id: 'tab-1', url: 'http://other.com' }], // url changed, no title
   };
   const { server, port } = await startServer({ store, session });
   t.after(() => server.close());
@@ -198,7 +198,7 @@ test('NO_PAGE_TARGET: resume verification fails when no open tabs remain', async
     targetTab: { id: 'tab-1', url: 'http://example.com', title: 'Page' },
   });
   const session = {
-    getFirstPageTarget: async () => { throw new NoPageTargetError(); },
+    listTabs: async () => [],
   };
   const { server, port } = await startServer({ store, session });
   t.after(() => server.close());

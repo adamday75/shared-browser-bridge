@@ -353,7 +353,7 @@ test('resume: target drift returns 409 with code TARGET_DRIFT and drift field', 
     targetTab: { id: 'tab-1', url: 'http://example.com', title: 'Original' },
   });
   const session = {
-    getFirstPageTarget: async () => ({ id: 'tab-2', url: 'http://other.com', title: 'Changed' }),
+    listTabs: async () => [{ id: 'tab-2', url: 'http://other.com', title: 'Changed' }],
   };
   const { server, port } = await startServer({ store, session });
   t.after(() => server.close());
@@ -553,7 +553,7 @@ test('resume: CDP error during target verification returns 503 with code CDP_ERR
     targetTab: { id: 'tab-1', url: 'http://example.com', title: 'Original' },
   });
   const session = {
-    getFirstPageTarget: async () => { throw new CdpConnectionError('lost during verify'); },
+    listTabs: async () => { throw new CdpConnectionError('lost during verify'); },
   };
   const { server, port } = await startServer({ store, session });
   t.after(() => server.close());

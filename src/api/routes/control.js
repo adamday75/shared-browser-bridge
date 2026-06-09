@@ -44,6 +44,34 @@ async function getCurrentTargetForResume({ store, session, label, missingTargetM
   }
 }
 
+// Returns all open page targets for use in drift-check and adoptTargetId paths.
+// Uses listTabs() rather than getFirstPageTarget() so the caller gets the full
+// set in one call. Throws a structured reject-response on CDP or no-tabs error.
+async function getAllTabsForResume({ store, session, label, missingTargetMessage }) {
+  let tabs;
+  try {
+    tabs = await session.listTabs();
+  } catch (err) {
+    if (err instanceof CdpConnectionError) {
+      try { store.transition('ERROR', { reason: err.message }); } catch { /* ignore re-transition errors */ }
+      throw reject(store, label, {
+        status: 503,
+        body: { ok: false, code: 'CDP_ERROR', error: err.message, controlState: 'ERROR' },
+      });
+    }
+    throw err;
+  }
+  if (tabs.length === 0) {
+    store.clearTargetTab();
+    try { store.transition('ERROR', { reason: 'no open page tabs to act on' }); } catch { /* ignore re-transition errors */ }
+    throw reject(store, label, {
+      status: 409,
+      body: { ok: false, code: 'NO_PAGE_TARGET', error: missingTargetMessage ?? 'no open page tabs to act on', controlState: 'ERROR' },
+    });
+  }
+  return tabs;
+}
+
 export function pauseRoute({ store }) {
   return async (req) => {
     let reason = null;
@@ -87,11 +115,12 @@ export function resumeRoute({ store, session }) {
 
     let force = false;
     let adoptCurrentTarget = false;
+    let adoptTargetId = null;
     if (body !== null) {
       if (typeof body !== 'object' || Array.isArray(body)) {
         return reject(store, 'control:resume', badRequest('body must be a JSON object'));
       }
-      const allowedKeys = new Set(['force', 'adoptCurrentTarget']);
+      const allowedKeys = new Set(['force', 'adoptCurrentTarget', 'adoptTargetId']);
       const unknown = Object.keys(body).filter((k) => !allowedKeys.has(k));
       if (unknown.length > 0) {
         return reject(store, 'control:resume', badRequest(`resume does not accept field(s): ${unknown.join(', ')}`));
@@ -102,8 +131,17 @@ export function resumeRoute({ store, session }) {
       if (body.adoptCurrentTarget !== undefined && typeof body.adoptCurrentTarget !== 'boolean') {
         return reject(store, 'control:resume', badRequest('"adoptCurrentTarget" must be a boolean'));
       }
+      if (body.adoptTargetId !== undefined && typeof body.adoptTargetId !== 'string') {
+        return reject(store, 'control:resume', badRequest('"adoptTargetId" must be a string'));
+      }
       force = body.force === true;
       adoptCurrentTarget = body.adoptCurrentTarget === true;
+      adoptTargetId = (typeof body.adoptTargetId === 'string' && body.adoptTargetId.trim())
+        ? body.adoptTargetId.trim()
+        : null;
+      if (adoptTargetId !== null && (adoptCurrentTarget || force)) {
+        return reject(store, 'control:resume', badRequest('"adoptTargetId" cannot be combined with "adoptCurrentTarget" or "force"'));
+      }
     }
 
     const { controlState, targetTab, lastAgentAction } = store.getState();
@@ -158,6 +196,67 @@ export function resumeRoute({ store, session }) {
       }
     }
 
+    // Explicit adopt-by-id path: caller specifies an exact target id to adopt.
+    // Use GET /tabs to enumerate available targets, then pass the chosen id here.
+    // CDP HTTP /json/list does not expose which tab the human has focused, so this
+    // explicit path is the reliable way to switch targets deliberately.
+    if (adoptTargetId !== null) {
+      if (!session) {
+        return reject(store, 'control:resume', {
+          status: 409,
+          body: {
+            ok: false,
+            code: 'STATE_CONFLICT',
+            error: 'cannot adopt target by id: no session available',
+            controlState: 'PAUSED',
+          },
+        });
+      }
+      let allTabs;
+      try {
+        allTabs = await getAllTabsForResume({
+          store,
+          session,
+          label: 'control:resume',
+          missingTargetMessage: 'cannot adopt target by id: no open page tabs are available',
+        });
+      } catch (response) {
+        if (response?.status) return response;
+        throw response;
+      }
+      const matchedTarget = allTabs.find((t) => t.id === adoptTargetId);
+      if (!matchedTarget) {
+        return reject(store, 'control:resume', {
+          status: 409,
+          body: {
+            ok: false,
+            code: 'TARGET_NOT_FOUND',
+            error: `no open page target with id: ${adoptTargetId}`,
+            availableTargets: allTabs,
+            controlState: 'PAUSED',
+          },
+        });
+      }
+      try {
+        store.transition('ATTACHED');
+        store.recordTargetTab({ id: matchedTarget.id, url: matchedTarget.url, title: matchedTarget.title });
+        store.recordHumanActivity('manual-resume', { reason: 'adopted explicit target by id' });
+        return {
+          status: 200,
+          body: {
+            ok: true,
+            controlState: 'ATTACHED',
+            adoptedTarget: { id: matchedTarget.id, url: matchedTarget.url, title: matchedTarget.title },
+          },
+        };
+      } catch (err) {
+        if (err instanceof TransitionError) {
+          return reject(store, 'control:resume', { status: 409, body: { ok: false, code: 'STATE_CONFLICT', error: err.message } });
+        }
+        throw err;
+      }
+    }
+
     // Fresh-state check: if the agent previously acted, require either a stored
     // observable page-target baseline or an explicit override before resume.
     // This is not true focus/current-tab detection; it is a small honest guard
@@ -168,7 +267,7 @@ export function resumeRoute({ store, session }) {
         body: {
           ok: false,
           code: 'MISSING_BASELINE',
-          error: 'cannot verify browser state before resume because no observable target baseline was recorded; pass {"adoptCurrentTarget":true} to accept current browser state and resume, or {"force":true} to skip all checks',
+          error: 'cannot verify browser state before resume because no observable target baseline was recorded; pass {"adoptCurrentTarget":true} to accept current browser state and resume, {"adoptTargetId":"<id>"} to explicitly adopt a target by id, or {"force":true} to skip all checks',
           controlState: 'PAUSED',
         },
       });
@@ -181,15 +280,15 @@ export function resumeRoute({ store, session }) {
           body: {
             ok: false,
             code: 'STATE_CONFLICT',
-            error: 'cannot verify browser state before resume; pass {"adoptCurrentTarget":true} to accept current browser state and resume, or {"force":true} to skip all checks',
+            error: 'cannot verify browser state before resume; pass {"adoptCurrentTarget":true} to accept current browser state and resume, {"adoptTargetId":"<id>"} to explicitly adopt a target by id, or {"force":true} to skip all checks',
             controlState: 'PAUSED',
           },
         });
       }
 
-      let currentTarget;
+      let allTabs;
       try {
-        currentTarget = await getCurrentTargetForResume({
+        allTabs = await getAllTabsForResume({
           store,
           session,
           label: 'control:resume',
@@ -199,6 +298,7 @@ export function resumeRoute({ store, session }) {
         if (response?.status) return response;
         throw response;
       }
+      const currentTarget = allTabs[0];
 
       const urlChanged = currentTarget.url !== targetTab.url;
       const tabChanged = currentTarget.id !== targetTab.id;
@@ -213,7 +313,7 @@ export function resumeRoute({ store, session }) {
           body: {
             ok: false,
             code: 'TARGET_DRIFT',
-            error: 'observable browser target changed since the last agent baseline; pass {"adoptCurrentTarget":true} to accept the new target and resume, or {"force":true} to resume without updating the baseline',
+            error: 'observable browser target changed since the last agent baseline; pass {"adoptCurrentTarget":true} to accept the new target, {"adoptTargetId":"<id>"} to explicitly select a target by id, or {"force":true} to resume without updating the baseline',
             drift: {
               expectedTabId: targetTab.id,
               expectedUrl: targetTab.url,
@@ -222,6 +322,7 @@ export function resumeRoute({ store, session }) {
               currentUrl: currentTarget.url,
               currentTitle: currentTarget.title ?? null,
             },
+            availableTargets: allTabs,
             controlState: 'PAUSED',
           },
         });
