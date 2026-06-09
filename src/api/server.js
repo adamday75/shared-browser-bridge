@@ -53,7 +53,7 @@ export function createServer({ store, session, recoverSession, setSession, clear
     if (!handler) {
       logger.log(`[api] 404 ${key}`);
       res.writeHead(404, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error: 'not found' }));
+      res.end(JSON.stringify({ ok: false, code: 'NOT_FOUND', error: 'not found' }));
       return;
     }
 
@@ -65,7 +65,7 @@ export function createServer({ store, session, recoverSession, setSession, clear
     } catch (err) {
       logger.error(`[api] ${key} failed: ${err.message}`);
       res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ ok: false, error: err.message }));
+      res.end(JSON.stringify({ ok: false, code: 'INTERNAL_ERROR', error: err.message }));
     }
   });
 

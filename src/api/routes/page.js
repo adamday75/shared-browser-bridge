@@ -1,4 +1,5 @@
-import { readJsonBody, BodyTooLargeError } from '../body.js';
+import { readJsonBody } from '../body.js';
+import { badRequest, bodyErrorResponse } from '../errors.js';
 import {
   withPage,
   gotoUrl,
@@ -9,18 +10,6 @@ import {
   PageActionError,
 } from '../../cdp/page.js';
 import { createHandoffGuard } from '../../guards/handoff.js';
-
-function badRequest(message) {
-  return { status: 400, body: { ok: false, error: message } };
-}
-
-function tooLarge(message) {
-  return { status: 413, body: { ok: false, error: message } };
-}
-
-function bodyErrorResponse(error) {
-  return error instanceof BodyTooLargeError ? tooLarge(error.message) : badRequest(error.message);
-}
 
 function reject(store, label, response) {
   store.recordRejectedAction(label, {
@@ -44,7 +33,7 @@ async function runPageAction(action) {
     return { status: 200, body: { ok: true, ...result } };
   } catch (err) {
     if (err instanceof PageActionError) {
-      return { status: err.status, body: { ok: false, error: err.message } };
+      return { status: err.status, body: { ok: false, code: 'PAGE_ACTION_ERROR', error: err.message } };
     }
     throw err;
   }

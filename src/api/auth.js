@@ -15,6 +15,6 @@ export function checkToken(req, token) {
 
   return {
     status: 401,
-    body: { ok: false, error: 'invalid or missing bearer token' },
+    body: { ok: false, code: 'AUTH_FAILED', error: 'invalid or missing bearer token' },
   };
 }

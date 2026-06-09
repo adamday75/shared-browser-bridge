@@ -6,7 +6,7 @@ export function tabsRoute({ store, session }) {
     if (!attached || !session) {
       return {
         status: 503,
-        body: { ok: false, error: 'not attached to Chrome' },
+        body: { ok: false, code: 'NOT_ATTACHED', error: 'not attached to Chrome' },
       };
     }
 
@@ -21,7 +21,7 @@ export function tabsRoute({ store, session }) {
         try { store.transition('ERROR', { reason: err.message }); } catch { /* ignore re-transition errors */ }
         return {
           status: 503,
-          body: { ok: false, error: err.message },
+          body: { ok: false, code: 'CDP_ERROR', error: err.message },
         };
       }
       throw err;

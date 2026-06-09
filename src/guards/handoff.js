@@ -3,19 +3,19 @@ import { CdpConnectionError, NoPageTargetError } from '../cdp/session.js';
 
 function gateForState(controlState, { session }) {
   if (!session || controlState === 'DETACHED') {
-    return { status: 503, body: { ok: false, error: 'not attached to Chrome' } };
+    return { status: 503, body: { ok: false, code: 'NOT_ATTACHED', controlState: controlState ?? 'DETACHED', error: 'not attached to Chrome' } };
   }
   if (controlState === 'ERROR') {
-    return { status: 409, body: { ok: false, error: 'bridge is in an error state; recover or reattach before issuing page actions' } };
+    return { status: 409, body: { ok: false, code: 'BRIDGE_ERROR', controlState, error: 'bridge is in an error state; recover or reattach before issuing page actions' } };
   }
   if (controlState === 'PAUSED') {
-    return { status: 409, body: { ok: false, error: 'bridge is paused; call POST /control/resume before issuing page actions' } };
+    return { status: 409, body: { ok: false, code: 'PAUSED', controlState, error: 'bridge is paused; call POST /control/resume before issuing page actions' } };
   }
   if (controlState === 'HUMAN_ACTIVE') {
-    return { status: 409, body: { ok: false, error: 'human is active; cannot issue agent action' } };
+    return { status: 409, body: { ok: false, code: 'HUMAN_ACTIVE', controlState, error: 'human is active; cannot issue agent action' } };
   }
   if (controlState === 'AGENT_ACTIVE') {
-    return { status: 409, body: { ok: false, error: 'agent is already active; wait for the current action to finish before issuing another' } };
+    return { status: 409, body: { ok: false, code: 'AGENT_ACTIVE', controlState, error: 'agent is already active; wait for the current action to finish before issuing another' } };
   }
   return null;
 }
@@ -37,7 +37,7 @@ export function createHandoffGuard({ store, session }) {
       } catch (err) {
         if (!(err instanceof TransitionError)) throw err;
         const rejected = gateForState(store.getState().controlState, { session })
-          ?? { status: 409, body: { ok: false, error: err.message } };
+          ?? { status: 409, body: { ok: false, code: 'STATE_CONFLICT', error: err.message } };
         store.recordRejectedAction(label, { status: rejected.status, reason: rejected.body?.error ?? null });
         return rejected;
       }
@@ -51,13 +51,13 @@ export function createHandoffGuard({ store, session }) {
         // Chrome disconnected during the action. Drive into ERROR so the next
         // caller gets an honest gate rather than a misleading ATTACHED state.
         try { store.transition('ERROR', { reason: err.message }); } catch { /* ignore re-transition errors */ }
-        result = { status: 503, body: { ok: false, error: err.message } };
+        result = { status: 503, body: { ok: false, code: 'CDP_ERROR', error: err.message } };
       } else if (err instanceof NoPageTargetError) {
         store.clearTargetTab();
         try { store.transition('ERROR', { reason: err.message }); } catch { /* ignore re-transition errors */ }
         result = {
           status: 409,
-          body: { ok: false, error: err.message, controlState: 'ERROR' },
+          body: { ok: false, code: 'NO_PAGE_TARGET', error: err.message, controlState: 'ERROR' },
         };
       } else {
         // Unexpected error: exit AGENT_ACTIVE before re-throwing so the bridge
@@ -90,7 +90,7 @@ export function createHandoffGuard({ store, session }) {
           if (err instanceof CdpConnectionError) {
             try { store.transition('ERROR', { reason: err.message }); } catch { /* ignore re-transition errors */ }
             store.recordAgentAction(label, { status: result?.status ?? null, ok: false });
-            return { status: 503, body: { ok: false, error: err.message } };
+            return { status: 503, body: { ok: false, code: 'CDP_ERROR', error: err.message } };
           } else if (err instanceof NoPageTargetError) {
             store.clearTargetTab();
             try { store.transition('ERROR', { reason: err.message }); } catch { /* ignore re-transition errors */ }
@@ -99,6 +99,7 @@ export function createHandoffGuard({ store, session }) {
               status: 409,
               body: {
                 ok: false,
+                code: 'NO_PAGE_TARGET',
                 error: err.message,
                 controlState: 'ERROR',
                 actionMayHaveCompleted: true,

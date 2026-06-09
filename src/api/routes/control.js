@@ -1,20 +1,9 @@
-import { readJsonBody, BodyTooLargeError } from '../body.js';
+import { readJsonBody } from '../body.js';
+import { badRequest, bodyErrorResponse } from '../errors.js';
 import { TransitionError } from '../../state/store.js';
 import { CdpConnectionError, NoPageTargetError } from '../../cdp/session.js';
 
 const PAUSEABLE_STATES = new Set(['ATTACHED', 'AGENT_ACTIVE', 'HUMAN_ACTIVE']);
-
-function badRequest(message) {
-  return { status: 400, body: { ok: false, error: message } };
-}
-
-function tooLarge(message) {
-  return { status: 413, body: { ok: false, error: message } };
-}
-
-function bodyErrorResponse(error) {
-  return error instanceof BodyTooLargeError ? tooLarge(error.message) : badRequest(error.message);
-}
 
 function reject(store, label, response) {
   store.recordRejectedAction(label, {
@@ -40,7 +29,7 @@ async function getCurrentTargetForResume({ store, session, label, missingTargetM
       try { store.transition('ERROR', { reason: err.message }); } catch { /* ignore re-transition errors */ }
       throw reject(store, label, {
         status: 503,
-        body: { ok: false, error: err.message, controlState: 'ERROR' },
+        body: { ok: false, code: 'CDP_ERROR', error: err.message, controlState: 'ERROR' },
       });
     }
     if (err instanceof NoPageTargetError) {
@@ -48,7 +37,7 @@ async function getCurrentTargetForResume({ store, session, label, missingTargetM
       try { store.transition('ERROR', { reason: err.message }); } catch { /* ignore re-transition errors */ }
       throw reject(store, label, {
         status: 409,
-        body: { ok: false, error: missingTargetMessage ?? err.message, controlState: 'ERROR' },
+        body: { ok: false, code: 'NO_PAGE_TARGET', error: missingTargetMessage ?? err.message, controlState: 'ERROR' },
       });
     }
     throw err;
@@ -72,10 +61,10 @@ export function pauseRoute({ store }) {
 
     const { controlState } = store.getState();
     if (controlState === 'PAUSED') {
-      return reject(store, 'control:pause', { status: 409, body: { ok: false, error: 'already paused', controlState } });
+      return reject(store, 'control:pause', { status: 409, body: { ok: false, code: 'STATE_CONFLICT', error: 'already paused', controlState } });
     }
     if (!PAUSEABLE_STATES.has(controlState)) {
-      return reject(store, 'control:pause', { status: 409, body: { ok: false, error: `cannot pause from state: ${controlState}`, controlState } });
+      return reject(store, 'control:pause', { status: 409, body: { ok: false, code: 'STATE_CONFLICT', error: `cannot pause from state: ${controlState}`, controlState } });
     }
 
     try {
@@ -84,7 +73,7 @@ export function pauseRoute({ store }) {
       return { status: 200, body: { ok: true, controlState: 'PAUSED', reason } };
     } catch (err) {
       if (err instanceof TransitionError) {
-        return reject(store, 'control:pause', { status: 409, body: { ok: false, error: err.message } });
+        return reject(store, 'control:pause', { status: 409, body: { ok: false, code: 'STATE_CONFLICT', error: err.message } });
       }
       throw err;
     }
@@ -119,7 +108,7 @@ export function resumeRoute({ store, session }) {
 
     const { controlState, targetTab, lastAgentAction } = store.getState();
     if (controlState !== 'PAUSED') {
-      return reject(store, 'control:resume', { status: 409, body: { ok: false, error: `cannot resume from state: ${controlState}`, controlState } });
+      return reject(store, 'control:resume', { status: 409, body: { ok: false, code: 'STATE_CONFLICT', error: `cannot resume from state: ${controlState}`, controlState } });
     }
 
     // Explicit adopt path: caller accepts that the observable browser target may
@@ -131,6 +120,7 @@ export function resumeRoute({ store, session }) {
           status: 409,
           body: {
             ok: false,
+            code: 'STATE_CONFLICT',
             error: 'cannot adopt current target: no session available',
             controlState: 'PAUSED',
           },
@@ -162,7 +152,7 @@ export function resumeRoute({ store, session }) {
         };
       } catch (err) {
         if (err instanceof TransitionError) {
-          return reject(store, 'control:resume', { status: 409, body: { ok: false, error: err.message } });
+          return reject(store, 'control:resume', { status: 409, body: { ok: false, code: 'STATE_CONFLICT', error: err.message } });
         }
         throw err;
       }
@@ -177,6 +167,7 @@ export function resumeRoute({ store, session }) {
         status: 409,
         body: {
           ok: false,
+          code: 'STATE_CONFLICT',
           error: 'cannot verify browser state before resume because no observable target baseline was recorded; pass {"adoptCurrentTarget":true} to accept current browser state and resume, or {"force":true} to skip all checks',
           controlState: 'PAUSED',
         },
@@ -189,6 +180,7 @@ export function resumeRoute({ store, session }) {
           status: 409,
           body: {
             ok: false,
+            code: 'STATE_CONFLICT',
             error: 'cannot verify browser state before resume; pass {"adoptCurrentTarget":true} to accept current browser state and resume, or {"force":true} to skip all checks',
             controlState: 'PAUSED',
           },
@@ -220,6 +212,7 @@ export function resumeRoute({ store, session }) {
           status: 409,
           body: {
             ok: false,
+            code: 'TARGET_DRIFT',
             error: 'observable browser target changed since the last agent baseline; pass {"adoptCurrentTarget":true} to accept the new target and resume, or {"force":true} to resume without updating the baseline',
             drift: {
               expectedTabId: targetTab.id,
@@ -239,7 +232,7 @@ export function resumeRoute({ store, session }) {
       return { status: 200, body: { ok: true, controlState: 'ATTACHED' } };
     } catch (err) {
       if (err instanceof TransitionError) {
-        return reject(store, 'control:resume', { status: 409, body: { ok: false, error: err.message } });
+        return reject(store, 'control:resume', { status: 409, body: { ok: false, code: 'STATE_CONFLICT', error: err.message } });
       }
       throw err;
     }
@@ -252,7 +245,7 @@ export function recoverRoute({ store, recoverSession, setSession }) {
     if (controlState !== 'ERROR' && controlState !== 'DETACHED') {
       return reject(store, 'control:recover', {
         status: 409,
-        body: { ok: false, error: `cannot recover from state: ${controlState}`, controlState },
+        body: { ok: false, code: 'STATE_CONFLICT', error: `cannot recover from state: ${controlState}`, controlState },
       });
     }
 
@@ -266,7 +259,7 @@ export function recoverRoute({ store, recoverSession, setSession }) {
       if (nowState !== controlState) {
         return reject(store, 'control:recover', {
           status: 409,
-          body: { ok: false, error: `recovery superseded: state changed to ${nowState} during CDP work`, controlState: nowState },
+          body: { ok: false, code: 'STATE_CONFLICT', error: `recovery superseded: state changed to ${nowState} during CDP work`, controlState: nowState },
         });
       }
       setSession(session);
@@ -291,21 +284,21 @@ export function recoverRoute({ store, recoverSession, setSession }) {
       if (nowState !== controlState) {
         return reject(store, 'control:recover', {
           status: 409,
-          body: { ok: false, error: `recovery superseded: state changed to ${nowState} during CDP work`, controlState: nowState },
+          body: { ok: false, code: 'STATE_CONFLICT', error: `recovery superseded: state changed to ${nowState} during CDP work`, controlState: nowState },
         });
       }
       if (err instanceof NoPageTargetError) {
         store.clearTargetTab();
         store.setAttachError(err);
-        return reject(store, 'control:recover', { status: 409, body: { ok: false, error: err.message, controlState: 'ERROR' } });
+        return reject(store, 'control:recover', { status: 409, body: { ok: false, code: 'NO_PAGE_TARGET', error: err.message, controlState: 'ERROR' } });
       }
       if (err instanceof CdpConnectionError) {
         store.setAttachError(err);
-        return reject(store, 'control:recover', { status: 503, body: { ok: false, error: err.message, controlState: 'ERROR' } });
+        return reject(store, 'control:recover', { status: 503, body: { ok: false, code: 'CDP_ERROR', error: err.message, controlState: 'ERROR' } });
       }
       if (err instanceof TransitionError) {
         store.setAttachError(err);
-        return reject(store, 'control:recover', { status: 503, body: { ok: false, error: err.message, controlState: 'ERROR' } });
+        return reject(store, 'control:recover', { status: 409, body: { ok: false, code: 'STATE_CONFLICT', error: err.message, controlState: 'ERROR' } });
       }
       throw err;
     }
@@ -318,13 +311,13 @@ export function detachRoute({ store, clearSession }) {
     if (controlState === 'DETACHED') {
       return reject(store, 'control:detach', {
         status: 409,
-        body: { ok: false, error: 'already detached', controlState },
+        body: { ok: false, code: 'STATE_CONFLICT', error: 'already detached', controlState },
       });
     }
     if (controlState !== 'ERROR') {
       return reject(store, 'control:detach', {
         status: 409,
-        body: { ok: false, error: `detach is only allowed from ERROR; current state is ${controlState}`, controlState },
+        body: { ok: false, code: 'STATE_CONFLICT', error: `detach is only allowed from ERROR; current state is ${controlState}`, controlState },
       });
     }
 

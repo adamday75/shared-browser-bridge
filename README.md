@@ -54,13 +54,57 @@ curl -H "Authorization: Bearer my-secret" http://127.0.0.1:7820/health
 Without the header, or with the wrong token, the server returns `401`:
 
 ```json
-{ "ok": false, "error": "invalid or missing bearer token" }
+{ "ok": false, "code": "AUTH_FAILED", "error": "invalid or missing bearer token" }
 ```
 
 Token rules:
 - Unset or empty → bridge behaves exactly as before (no auth check).
 - Set to any non-empty string → all routes require a valid `Authorization: Bearer <token>` header.
 - There is only one token (shared secret). No user accounts, no rotation logic.
+
+## Failure responses
+
+All error responses share this shape:
+
+```json
+{ "ok": false, "code": "...", "error": "..." }
+```
+
+`code` is a short machine-readable identifier. `error` is a human-readable message. Responses from state-gated routes also include `controlState`.
+
+### Error codes
+
+| Code | HTTP status | Meaning |
+|---|---|---|
+| `AUTH_FAILED` | 401 | Token required but missing or wrong |
+| `NOT_FOUND` | 404 | Route does not exist |
+| `INVALID_INPUT` | 400 | Request body missing a required field or has invalid content |
+| `BODY_TOO_LARGE` | 413 | Request body exceeds the 1 MB limit |
+| `NOT_ATTACHED` | 503 | Bridge is not attached to Chrome; attach or recover first |
+| `BRIDGE_ERROR` | 409 | Bridge is in ERROR state; call `POST /control/recover` |
+| `PAUSED` | 409 | Bridge is paused; call `POST /control/resume` |
+| `HUMAN_ACTIVE` | 409 | Human has the active control slot |
+| `AGENT_ACTIVE` | 409 | An agent action is already in progress |
+| `CDP_ERROR` | 503 | Chrome connection failed or lost during an action |
+| `NO_PAGE_TARGET` | 409 | No open browser page tabs to act on |
+| `PAGE_ACTION_ERROR` | 404/502/504 | Page action failed (element not found, navigation error, or timeout) |
+| `STATE_CONFLICT` | 409 | State transition rejected; operation not allowed in current state, or concurrent race condition |
+| `TARGET_DRIFT` | 409 | Observable browser target changed since the last agent baseline; pass `adoptCurrentTarget` or `force` to resume |
+| `INTERNAL_ERROR` | 500 | Unexpected error in the bridge process |
+
+### State-gated rejections
+
+Page action routes (`/page/*`) reject when the bridge is not in a ready state. The response includes `controlState` so you can act on it without a separate `GET /control/state` call:
+
+```json
+{ "ok": false, "code": "PAUSED", "controlState": "PAUSED", "error": "bridge is paused; call POST /control/resume before issuing page actions" }
+```
+
+```json
+{ "ok": false, "code": "NOT_ATTACHED", "controlState": "DETACHED", "error": "not attached to Chrome" }
+```
+
+Call `GET /control/state` at any time to inspect the full bridge state.
 
 ## Thesis
 
