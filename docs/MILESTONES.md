@@ -263,3 +263,44 @@ Status note:
 - The skeptical review correctly rejected the first pass because the proof wording overclaimed what the read step demonstrated, the script could PASS without `adoptedTarget`, and token support had drifted into the shared adapter surface. The correction pass made missing `adoptedTarget` a hard FAIL, moved token handling local to the script, and tightened README/operator-guide wording.
 - What is proven: deterministic target selection; successful explicit adoption confirmed by matching `adoptedTarget.id` in the resume response; successful post-adoption safe read; the script behavior across representative success/failure branches.
 - What remains intentionally unproven/out of scope: that `GET /page/url` read the adopted tab specifically in multi-tab setups; any true focused-tab awareness; live end-to-end execution in this sandbox without a real running bridge + Chrome.
+
+## Milestone 9 — Live proof + operator playbook closure
+
+Goal: convert the first successful real live run of the explicit-target demo lane into durable repo truth.
+
+### Live run
+
+The explicit-target demo script was executed successfully against a real Windows Chrome session via the WSL bridge lane (Windows PowerShell terminal).
+
+**Live bridge command:**
+```powershell
+wsl bash -lc "cd /home/adamd/.openclaw/workspace/shared-browser-bridge && CDP_HOST=172.22.96.1 node src/index.js"
+```
+
+**Live demo command:**
+```powershell
+wsl bash -lc "cd /home/adamd/.openclaw/workspace/shared-browser-bridge && node scripts/demo-explicit-target-flow.mjs --match-url example.com"
+```
+
+**Observed results:**
+- Script reported: PASS
+- Selected target: title `Example Domain`, url `https://example.com/`, id `5B2AF0C8F91ABF5D5077FEBC7BFC3D59`
+- `verify adoption`: `adoptedTarget.id` matched the intended tab id
+- `read/url`: returned `https://example.com/`
+- Bridge initially attached with a messy baseline (`chrome://intro/`); passively drifted to `PAUSED`; the explicit adopt flow resumed and succeeded from that state
+
+**What the live run confirms:**
+- Deterministic URL-match tab selection against a real CDP tab list
+- Successful `resume({ adoptTargetId })` with `adoptedTarget.id` matching the intended tab in the response body
+- Successful `GET /page/url` post-adoption read
+- Explicit adopt succeeding from `PAUSED`, reached via passive drift on a messy initial baseline (`chrome://intro/`)
+
+**What remains intentionally unproven:**
+- That `GET /page/url` read the adopted tab specifically in a multi-tab setup (the post-adoption read returns the first CDP-listed target; the script states this limitation explicitly)
+- True focused/foreground tab detection (not available via CDP HTTP)
+- Broad live proof across multiple sites, multi-tab arrangements, or other operator environments
+
+Status note:
+- Completed on 2026-06-09. No code changes were required — M9 is purely documentation and live-proof capture.
+- The live run confirmed that the demo script ran to PASS and explicit-target adoption succeeded in the Windows Chrome + WSL bridge lane.
+- The operator guide Section 4 was updated with the Windows PowerShell `wsl bash -lc` command path for repeatability.

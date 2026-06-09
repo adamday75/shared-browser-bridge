@@ -88,6 +88,20 @@ CDP_HOST=172.22.96.1 node src/index.js
 
 Verified in live testing: `127.0.0.1:9222` returned connection refused from WSL; `172.22.96.1:9222` succeeded.
 
+### Running from Windows PowerShell via WSL (live-tested path)
+
+You can drive the bridge and demo script from a Windows PowerShell terminal without switching to a WSL shell:
+
+```powershell
+# Window 1: start the bridge from PowerShell
+wsl bash -lc "cd /home/adamd/.openclaw/workspace/shared-browser-bridge && CDP_HOST=172.22.96.1 node src/index.js"
+
+# Window 2: run the explicit-target demo from PowerShell
+wsl bash -lc "cd /home/adamd/.openclaw/workspace/shared-browser-bridge && node scripts/demo-explicit-target-flow.mjs --match-url example.com"
+```
+
+This is the exact path used in the M9 live verification run. Chrome was running on Windows with `--remote-debugging-port=9222`; `CDP_HOST=172.22.96.1` is the Windows host IP as seen from WSL2 (find yours with `cat /etc/resolv.conf | grep nameserver | awk '{print $2}'`).
+
 ### Environment variables
 
 | Variable | Default | Description |
