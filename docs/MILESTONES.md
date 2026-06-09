@@ -127,6 +127,35 @@ Status note:
 
 Goal: two narrow improvements to resume observability — add `expectedTitle`/`currentTitle` fields to the `TARGET_DRIFT` drift object, and introduce a dedicated `MISSING_BASELINE` code replacing overloaded `STATE_CONFLICT` for the missing-baseline resume case.
 
+### Build 2 — Recovery-path confidence
+
+Goal: tighten representative hard resume/recover paths so the bridge behaves predictably under stale, broken, or mid-flight-changing browser/session conditions.
+
+Target deliverables:
+- [x] focused tests for representative hard recovery/resume edge cases
+- [x] verify the bridge does not claim readiness when page/session reality is broken
+- [x] docs reflect only what was actually verified
+
+Acceptance:
+- [x] resume with stored targetTab but no live session returns STATE_CONFLICT, and the route attempts no transition write
+- [x] adoptCurrentTarget when all tabs disappear returns NO_PAGE_TARGET, and the route calls `transition('ERROR')`
+- [x] superseded recover (state changes during CDP success) returns STATE_CONFLICT, and the stale `setAttached` write is suppressed
+- [x] superseded recover (state changes during CDP failure) returns STATE_CONFLICT instead of CDP_ERROR, and the stale `setAttachError` write is suppressed
+- [x] recover from DETACHED (not only ERROR) with no page target returns NO_PAGE_TARGET, and the route calls `setAttachError(...)`
+
+Status note:
+- Build 2 completed on 2026-06-09. No code bugs found; all five cases were untested paths in existing correct code.
+- New test file: `tests/recovery-confidence.test.js` (5 tests). Introduces `makeSpyStore` and `makeShiftingSpyStore` — spy-enabled doubles that record mutator invocation/suppression, enabling assertions on route write decisions (not just response body shape).
+- Each test asserts on a store mutator call in addition to the HTTP response:
+  - "stays PAUSED": `transition` call count is zero — no state write attempted on the blocking path.
+  - "returns ERROR response + writes ERROR transition" (adoptCurrentTarget / NoPageTargetError): `transition` was called exactly once with `'ERROR'`.
+  - "superseded recover (CDP success)": `setAttached` was not called — stale write suppressed.
+  - "superseded recover (CDP failure)": `setAttachError` was not called — stale error-write suppressed.
+  - "recover from DETACHED / no page target": `setAttachError` was called exactly once.
+- 63/63 tests pass across all test files.
+- No retries, auto-healing, orchestration, or policy engine added.
+- What remains intentionally unproven: persisted real-store state after mutation (the concrete in-memory store is not exercised here), concurrent timing at the OS thread level, and any recovery paths not enumerated above.
+
 ### Build 1 — Structured drift and recovery observability
 
 Target deliverables:
