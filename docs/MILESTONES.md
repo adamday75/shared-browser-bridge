@@ -107,12 +107,18 @@ Goal:
 Make failures easier to debug without changing the project’s local-first scope or turning the bridge into a larger framework.
 
 Target deliverables:
-- [ ] normalize API error response shape across route failures
-- [ ] document the main operator-visible failure modes (`DETACHED`, `PAUSED`, `ERROR`, auth failure, bad route/input)
-- [ ] add focused tests for representative 4xx/5xx paths
-- [ ] tighten README/docs examples around expected failure responses where useful
+- [x] normalize API error response shape across route failures
+- [x] document the main operator-visible failure modes (`DETACHED`, `PAUSED`, `ERROR`, auth failure, bad route/input)
+- [x] add focused tests for representative 4xx/5xx paths
+- [x] tighten README/docs examples around expected failure responses where useful
 
 Acceptance:
-- [ ] Common failure modes return predictable JSON structure and status codes
-- [ ] A new developer can tell the difference between auth failure, bad input, paused state, detached state, and internal error without reading source first
-- [ ] Changes stay small and do not expand into retries, rate limiting, remote deployment posture, or a larger auth system
+- [x] Common failure modes return predictable JSON structure and status codes
+- [x] A new developer can tell the difference between auth failure, bad input, paused state, detached state, and internal error without reading source first
+- [x] Changes stay small and do not expand into retries, rate limiting, remote deployment posture, or a larger auth system
+
+Status note:
+- Build 2 completed on 2026-06-08 after repeated skeptical review and several narrow correction passes that closed repo-wide docs/code/test honesty gaps.
+- Landed in `f04e68e` (`Implement M5 Build 2 error-shape normalization`).
+- Scope stayed intentionally small: normalized error codes/shapes across representative auth, server, tabs, page, control, and handoff failure paths; focused tests; and clearer README failure-response guidance.
+- Final review outcome: PASS after `/tabs` normalization and the missing `BODY_TOO_LARGE` plus representative `/tabs` failure coverage were added.
