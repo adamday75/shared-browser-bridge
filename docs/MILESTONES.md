@@ -122,3 +122,29 @@ Status note:
 - Landed in `f04e68e` (`Implement M5 Build 2 error-shape normalization`).
 - Scope stayed intentionally small: normalized error codes/shapes across representative auth, server, tabs, page, control, and handoff failure paths; focused tests; and clearer README failure-response guidance.
 - Final review outcome: PASS after `/tabs` normalization and the missing `BODY_TOO_LARGE` plus representative `/tabs` failure coverage were added.
+
+## Milestone 6 — Observable state + drift introspection
+
+Goal: two narrow improvements to resume observability — add `expectedTitle`/`currentTitle` fields to the `TARGET_DRIFT` drift object, and introduce a dedicated `MISSING_BASELINE` code replacing overloaded `STATE_CONFLICT` for the missing-baseline resume case.
+
+### Build 1 — Structured drift and recovery observability
+
+Target deliverables:
+- [x] add `expectedTitle`/`currentTitle` to the `TARGET_DRIFT` `drift` object
+- [x] introduce `MISSING_BASELINE` code (replaces overloaded `STATE_CONFLICT` for the missing-baseline resume case)
+- [x] focused tests for representative drift/recovery-info cases
+- [x] docs: explain new fields and operator guidance table
+
+Acceptance:
+- [x] representative drift/recovery blocking responses expose useful structured fields
+- [x] clients do not need to rely only on parsing human-readable error strings
+- [x] state/conflict/drift distinctions remain clear
+- [x] focused tests cover representative cases; existing behavior still passes
+- [x] docs explain new fields honestly and briefly
+
+Status note:
+- Build 1 completed on 2026-06-08; test file covers the two new M6 semantics (title fields in TARGET_DRIFT, MISSING_BASELINE) plus one pre-existing NO_PAGE_TARGET-during-resume path included for completeness.
+- Scope: two narrow `control.js` changes (title fields in `TARGET_DRIFT` `drift` object; `MISSING_BASELINE` code replacing overloaded `STATE_CONFLICT`); one focused test file (`tests/drift-recovery.test.js`, 7 tests: title fields including `null` fallback, `MISSING_BASELINE` block and force bypass, contrast showing `MISSING_BASELINE` does not fire without prior agent action, and `NO_PAGE_TARGET` during resume verification); README error-codes table updated and "Drift and recovery introspection" operator guidance section added.
+- Pre-existing recover-route assertions were removed from the M6 test file — `chrome` and `targetTab` in the recover success payload existed before this milestone.
+- 58/58 tests pass across all test files.
+- No retries, no auto-healing, no orchestration added.

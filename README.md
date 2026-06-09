@@ -90,6 +90,7 @@ All error responses share this shape:
 | `PAGE_ACTION_ERROR` | 404/502/504 | Page action failed (element not found, navigation error, or timeout) |
 | `STATE_CONFLICT` | 409 | State transition rejected; operation not allowed in current state, or concurrent race condition |
 | `TARGET_DRIFT` | 409 | Observable browser target changed since the last agent baseline; pass `adoptCurrentTarget` or `force` to resume |
+| `MISSING_BASELINE` | 409 | Resume blocked because agent previously acted but no observable target baseline was recorded; pass `adoptCurrentTarget` or `force` |
 | `INTERNAL_ERROR` | 500 | Unexpected error in the bridge process |
 
 ### State-gated rejections
@@ -105,6 +106,41 @@ Page action routes (`/page/*`) reject when the bridge is not in a ready state. T
 ```
 
 Call `GET /control/state` at any time to inspect the full bridge state.
+
+## Drift and recovery introspection
+
+When `POST /control/resume` detects that the observable browser target changed since the last agent baseline, it returns `TARGET_DRIFT` with a structured `drift` object:
+
+```json
+{
+  "ok": false,
+  "code": "TARGET_DRIFT",
+  "controlState": "PAUSED",
+  "error": "observable browser target changed since the last agent baseline...",
+  "drift": {
+    "expectedTabId": "tab-1",
+    "expectedUrl": "http://example.com",
+    "expectedTitle": "Original Page",
+    "currentTabId": "tab-2",
+    "currentUrl": "http://other.com",
+    "currentTitle": "Different Page"
+  }
+}
+```
+
+The `drift` fields reflect what the bridge recorded at the time of the last agent baseline (`expected*`) vs. what CDP reports now (`current*`). They are informational — the client decides what to do.
+
+**How a client should react based on the blocking code:**
+
+| Code | Meaning | Suggested action |
+|---|---|---|
+| `TARGET_DRIFT` | Browser tab or URL changed since agent baseline | Inspect `drift` fields; pass `{"adoptCurrentTarget":true}` to accept the new state, or `{"force":true}` to resume without updating the baseline |
+| `MISSING_BASELINE` | Agent previously acted but no observable baseline was recorded | Pass `{"adoptCurrentTarget":true}` to take the current tab as the new baseline, or `{"force":true}` to resume unconditionally |
+| `NO_PAGE_TARGET` | No open browser page tabs found | Open a page in Chrome, then call `POST /control/recover`; or pass `{"adoptCurrentTarget":true}` to accept the current target once a page is available |
+| `CDP_ERROR` | Chrome connection lost | Check that Chrome is running with `--remote-debugging-port`; call `POST /control/recover` |
+| `STATE_CONFLICT` | Wrong state for this operation | Call `GET /control/state` to check current state |
+
+Parse `code`, not `error` — `code` is the machine-readable identifier to handle programmatically; the human-readable `error` string may change between versions.
 
 ## Thesis
 

@@ -167,7 +167,7 @@ export function resumeRoute({ store, session }) {
         status: 409,
         body: {
           ok: false,
-          code: 'STATE_CONFLICT',
+          code: 'MISSING_BASELINE',
           error: 'cannot verify browser state before resume because no observable target baseline was recorded; pass {"adoptCurrentTarget":true} to accept current browser state and resume, or {"force":true} to skip all checks',
           controlState: 'PAUSED',
         },
@@ -217,8 +217,10 @@ export function resumeRoute({ store, session }) {
             drift: {
               expectedTabId: targetTab.id,
               expectedUrl: targetTab.url,
+              expectedTitle: targetTab.title ?? null,
               currentTabId: currentTarget.id,
               currentUrl: currentTarget.url,
+              currentTitle: currentTarget.title ?? null,
             },
             controlState: 'PAUSED',
           },
