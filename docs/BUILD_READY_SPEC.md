@@ -109,7 +109,7 @@ This avoids the exact pain we observed with Xvfb-backed or separately managed br
 
 5. `src/state/store.js`
    - current bridge state
-   - active tab id
+   - stored baseline target id
    - pause/resume state
    - last human activity timestamp
 
@@ -141,7 +141,7 @@ Example response:
 ```
 
 ### `GET /tabs`
-Returns open tabs and active tab.
+Returns open tabs and the stored baseline target id.
 
 ### `POST /page/goto`
 Body:

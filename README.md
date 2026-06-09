@@ -32,8 +32,10 @@ All configuration is via environment variables. Defaults are safe for local use.
 | `BRIDGE_HOST` | `127.0.0.1` | Host to bind. Keep this as `127.0.0.1` unless you know what you are doing. |
 | `BRIDGE_PORT` | `7820` | Port to listen on. |
 | `BRIDGE_API_TOKEN` | (unset) | Optional bearer token. See below. |
-| `CDP_HOST` | `127.0.0.1` | Chrome DevTools Protocol host. |
+| `CDP_HOST` | `127.0.0.1` | Chrome DevTools Protocol host. Set to the Windows host IP when running the bridge from WSL. See below. |
 | `CDP_PORT` | `9222` | Chrome DevTools Protocol port. |
+| `CDP_ALLOW_REMOTE_LAUNCH` | (unset) | Set to `1` to allow Chrome launch fallback when `CDP_HOST` is not a local address. Off by default: launching a local Chrome when CDP_HOST points elsewhere would silently control a different browser than intended. |
+| `TAKEOVER_POLL_INTERVAL_MS` | `2000` | How often the passive takeover poller checks for drift while ATTACHED (milliseconds). |
 
 ## Optional API token
 
@@ -173,14 +175,22 @@ That is the whole point of the project:
 
 ## Windows vs WSL
 
-The intended production setup is the **bridge running on Windows**, attached to the user's real visible Chrome via CDP. WSL agents call the bridge over localhost (which works because Windows and WSL share the loopback interface on WSL2).
+The intended production setup is the **bridge running on Windows**, attached to the user's real visible Chrome via CDP. WSL agents call the bridge at `http://127.0.0.1:7820` — WSL2 forwards the Windows loopback automatically.
 
-From WSL, the bridge is reachable at `http://127.0.0.1:7820` without any extra configuration — WSL2's NAT forwards the loopback automatically.
+**Running the bridge from WSL (development mode):** If you run the bridge from WSL instead of Windows, `127.0.0.1:9222` may not reach Windows Chrome from WSL due to WSL2 network isolation. Use the Windows host IP from `/etc/resolv.conf`:
 
-Running the bridge from WSL against a local headless Chrome is a development/testing convenience for exercising the attach/launch logic — it is not the target setup.
+```bash
+cat /etc/resolv.conf | grep nameserver | awk '{print $2}'
+# e.g. 172.22.96.1
+
+CDP_HOST=172.22.96.1 node src/index.js
+```
+
+This is a tested pattern from live usage. The bridge will refuse to launch a local Chrome as a fallback for a non-local `CDP_HOST` unless you explicitly set `CDP_ALLOW_REMOTE_LAUNCH=1` — that guard prevents silently controlling the wrong browser.
 
 ## Docs
 
+- `docs/SHARED_BROWSER_OPERATOR_GUIDE.md` — primary operator/agent usage reference
 - `docs/BUILD_READY_SPEC.md`
 - `docs/ARCHITECTURE.md`
 - `docs/REVIEW_WORKFLOW.md`

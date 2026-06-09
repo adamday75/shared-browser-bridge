@@ -11,10 +11,11 @@ export function tabsRoute({ store, session }) {
     }
 
     try {
+      const { targetTab } = store.getState();
       const tabs = await session.listTabs();
       return {
         status: 200,
-        body: { ok: true, count: tabs.length, tabs },
+        body: { ok: true, count: tabs.length, baselineTargetId: targetTab?.id ?? null, tabs },
       };
     } catch (err) {
       if (err instanceof CdpConnectionError) {

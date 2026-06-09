@@ -3,6 +3,35 @@ import assert from 'node:assert/strict';
 import http from 'node:http';
 import { createServer } from '../src/api/server.js';
 
+function makeSpyStore(stateOverrides = {}) {
+  const state = {
+    attached: false, chrome: null, error: null,
+    controlState: 'DETACHED', pauseReason: null,
+    lastAgentAction: null, lastHumanActivity: null,
+    lastTakeover: null, targetTab: null,
+    ...stateOverrides,
+  };
+  const calls = {};
+  const spy = (name) => (...args) => {
+    if (!calls[name]) calls[name] = [];
+    calls[name].push(args);
+  };
+  return {
+    getState: () => state,
+    recordRejectedAction: spy('recordRejectedAction'),
+    recordAgentAction: spy('recordAgentAction'),
+    transition: spy('transition'),
+    recordHumanActivity: spy('recordHumanActivity'),
+    recordTargetTab: spy('recordTargetTab'),
+    clearTargetTab: spy('clearTargetTab'),
+    setAttached: spy('setAttached'),
+    setAttachError: spy('setAttachError'),
+    setDetached: spy('setDetached'),
+    callCount: (name) => (calls[name] ?? []).length,
+    firstCallArgs: (name) => (calls[name] ?? [[]])[0],
+  };
+}
+
 function makeStore(stateOverrides = {}) {
   const state = {
     attached: false,
@@ -224,4 +253,56 @@ test('TARGET_DRIFT: availableTargets includes all open tabs (multiple)', async (
   assert.equal(res.body.availableTargets.length, 3);
   const ids = res.body.availableTargets.map((t) => t.id);
   assert.deepEqual(ids, ['tab-2', 'tab-3', 'tab-4']);
+});
+
+// ── adoptTargetId: store writes verified with spy store ───────────────────────
+
+test('adoptTargetId: records correct target to store on success', async (t) => {
+  // Prove that the route actually writes the matched target to the store,
+  // not just that the response body claims it did. Uses a spy store so we
+  // can inspect the exact args passed to recordTargetTab and transition.
+  const store = makeSpyStore({
+    controlState: 'PAUSED',
+    targetTab: { id: 'tab-1', url: 'http://example.com', title: 'Tab One' },
+  });
+  const session = {
+    listTabs: async () => [
+      { id: 'tab-1', url: 'http://example.com', title: 'Tab One' },
+      { id: 'tab-2', url: 'http://other.com', title: 'Tab Two' },
+    ],
+  };
+  const { server, port } = await startServer({ store, session });
+  t.after(() => server.close());
+
+  await post(port, '/control/resume', { adoptTargetId: 'tab-2' });
+
+  assert.equal(store.callCount('transition'), 1, 'transition must be called once');
+  assert.equal(store.firstCallArgs('transition')[0], 'ATTACHED', 'must transition to ATTACHED');
+  assert.equal(store.callCount('recordTargetTab'), 1, 'recordTargetTab must be called once');
+  const recorded = store.firstCallArgs('recordTargetTab')[0];
+  assert.equal(recorded.id, 'tab-2', 'recorded id must match adopted target');
+  assert.equal(recorded.url, 'http://other.com', 'recorded url must match adopted target');
+  assert.equal(recorded.title, 'Tab Two', 'recorded title must match adopted target');
+  assert.equal(store.callCount('recordHumanActivity'), 1, 'recordHumanActivity must be called once');
+});
+
+test('adoptTargetId: does not write to store on TARGET_NOT_FOUND', async (t) => {
+  // When the requested id is not found, no state must be written.
+  // State stays PAUSED and the store is untouched.
+  const store = makeSpyStore({
+    controlState: 'PAUSED',
+    targetTab: { id: 'tab-1', url: 'http://example.com', title: 'Tab One' },
+  });
+  const session = {
+    listTabs: async () => [{ id: 'tab-1', url: 'http://example.com', title: 'Tab One' }],
+  };
+  const { server, port } = await startServer({ store, session });
+  t.after(() => server.close());
+
+  const res = await post(port, '/control/resume', { adoptTargetId: 'tab-unknown' });
+  assert.equal(res.status, 409);
+  assert.equal(res.body.code, 'TARGET_NOT_FOUND');
+
+  assert.equal(store.callCount('transition'), 0, 'transition must not be called on failure');
+  assert.equal(store.callCount('recordTargetTab'), 0, 'recordTargetTab must not be called on failure');
 });

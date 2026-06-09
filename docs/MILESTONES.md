@@ -212,3 +212,29 @@ Status note:
 - Pre-existing recover-route assertions were removed from the M6 test file — `chrome` and `targetTab` in the recover success payload existed before this milestone.
 - 58/58 tests pass across all test files.
 - No retries, no auto-healing, no orchestration added.
+
+## Milestone 7 — Explicit target workflow hardening
+
+Goal: make the honest multi-tab workflow easier to use, easier to verify, and easier for future operators/agents to understand without inventing focused-tab behavior that does not exist.
+
+Target deliverables:
+- [x] add a small `/tabs` usability improvement exposing the stored baseline target id
+- [x] close the narrow proof gap around `adoptTargetId` store writes
+- [x] add focused route tests for the `/tabs` response shape and error paths
+- [x] create a canonical operator/agent guide for real multi-tab use
+- [x] align repo docs/spec wording with the honest baseline-target semantics
+
+Acceptance:
+- [x] operators can inspect open tabs and see the stored baseline target id without an extra state round-trip
+- [x] `adoptTargetId` proof covers the representative write/no-write paths that M6 left unproven
+- [x] one canonical guide explains the target model, runtime setup, safe workflow, and limitations clearly enough for future agents/operators
+- [x] repo wording no longer implies true active/focused-tab awareness where none exists
+
+Status note:
+- Completed on 2026-06-09 after builder pass, skeptical review, and one narrow correction pass for trust alignment.
+- New canonical reference: `docs/SHARED_BROWSER_OPERATOR_GUIDE.md`.
+- `/tabs` now returns `baselineTargetId` — the stored baseline target id — not a live/focused/current tab signal.
+- New test file: `tests/tabs-route.test.js` (6 tests). `tests/focused-target.test.js` gained two spy-store tests proving `adoptTargetId` writes the chosen target on success and performs no state write on `TARGET_NOT_FOUND`.
+- The skeptical review correctly rejected the first pass because `currentTargetId` and leftover “active tab” wording implied stronger semantics than the bridge really has; the correction pass renamed the field to `baselineTargetId` and aligned the spec.
+- What is proven: `/tabs` response shape and representative error paths; the narrow `adoptTargetId` write/no-write behavior under success and `TARGET_NOT_FOUND`; the canonical operator guide and README/spec language are internally aligned on baseline semantics.
+- What remains intentionally unproven/out of scope: true focused-tab detection; broader adapter→server integration coverage for `adoptTargetId`; any architecture beyond the explicit-target workflow hardening.
