@@ -29,5 +29,8 @@ export function createSessionSlot(initialSession = null) {
     async getFirstPageTarget() {
       return requireCurrent().getFirstPageTarget();
     },
+    async getTargetById(id) {
+      return requireCurrent().getTargetById(id);
+    },
   };
 }

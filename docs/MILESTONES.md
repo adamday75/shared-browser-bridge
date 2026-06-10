@@ -400,3 +400,49 @@ Status note:
 - Honest live outcome: the workflow now runs successfully, but its read result still reflects the first CDP-listed target (`chrome://newtab/`) rather than the explicitly adopted `https://example.com/`, which is the expected and documented limitation.
 - What remains intentionally unproven: a clean reproducible rerun of the broader server-binding test slice in every sandbox context; full suite rerun beyond the new regression + live checks; any guarantee that page reads reflect the explicitly adopted tab in multi-tab setups; any improvement to focused-tab awareness.
 - What is out of scope: changing the first-CDP-target semantics; focus-aware architecture; extension work; broader workflow redesign.
+
+## Milestone 13 — Bind page reads to the explicitly adopted target
+
+Goal: determine whether `url()`, `text()`, and `snapshot()` can be made to operate on the explicitly adopted target (the tab recorded via `adoptTargetId` or `adoptCurrentTarget` at resume time) rather than whatever `getFirstPageTarget()` returns.
+
+### Investigation result
+
+The fix is possible and was implemented. The blocking gap was entirely architectural: `withPage()` always called `session.getFirstPageTarget()` regardless of what was stored in `store.targetTab`. The adopted target id (`store.getState().targetTab?.id`) was available at every page route but never consulted. CDP's `/json/list` surface (`listPageTargets()`) already returns full target objects including `webSocketDebuggerUrl` for every tab, so lookup-by-id required no new network surface.
+
+A secondary issue: the handoff guard's post-action baseline update also called `getFirstPageTarget()`, which would overwrite `targetTab.id` back to the first-listed tab after every successful page operation. This was fixed in the same pass so that successive reads stay bound to the adopted target.
+
+### Changes made
+
+- `src/cdp/session.js`: added `getTargetById(id)` — queries `listPageTargets()`, finds the matching target by id, throws `NoPageTargetError` if not found
+- `src/cdp/session-slot.js`: added `getTargetById` proxy to forward to the current session
+- `src/cdp/page.js`: `withPage()` now accepts a `{ targetId }` option; when provided and non-null, calls `session.getTargetById(targetId)` instead of `session.getFirstPageTarget()`
+- `src/api/routes/page.js`: all six page routes (`url`, `text`, `snapshot`, `goto`, `click`, `type`) now read `store.getState().targetTab?.id` and pass it as `targetId`; `urlRoute` uses `session.getTargetById` directly (no WebSocket needed for URL reads)
+- `src/guards/handoff.js`: post-action baseline update now uses `session.getTargetById(targetTab.id)` when an adopted target is recorded, so the adopted tab persists as the baseline across successive operations; falls back to `getFirstPageTarget()` when no adoption exists
+- `tests/adopted-target-reads.test.js`: 6 regression tests (new file)
+
+### What is proven
+
+- `url()` calls `getTargetById` with the adopted id, not `getFirstPageTarget`, and returns that tab's URL — proven by test 1 (explicit call-site assertion)
+- `url()` falls back to first-target semantics when `targetTab` is null — proven by test 2
+- `text()` connects to the adopted tab's CDP WebSocket (not the first-listed tab's), and returns that tab's text — proven by test 3 (two real mock WS servers, distinct response content)
+- `text()` falls back to first-target when no adoption — proven by test 4
+- `snapshot()` connects to the adopted tab's CDP WebSocket — proven by test 5
+- When the adopted tab has been closed after adoption, `text()` returns `NO_PAGE_TARGET` with a 409 — proven by test 6
+- The new M13 regression file proves the adopted-target read path directly. A broader full-suite/pass-count claim is intentionally not made here.
+
+### What remains intentionally unproven
+
+- `goto`, `click`, and `type` were also updated to use the adopted target id (same pattern), but no dedicated M13 tests cover them — the correctness of the mechanism is shared with `text()` and `snapshot()` which are tested
+- The post-action baseline update path in `handoff.js` is not exercised by the new tests (the mock store's `transition()` is a no-op, so the guard does not enter AGENT_ACTIVE, and the baseline update block is not reached); the fix is correct but verified only by code review, not by a test that exercises the full guard state machine
+
+### No longer true after M13
+
+The following statements in earlier milestone notes are now outdated:
+- "the post-adoption read returns the first CDP-listed target" (M8, M9, M11, M12 notes) is no longer true for `url()`, `text()`, and `snapshot()` when an adopted target is recorded.
+- The M11 page-brief note about first-listed-target reads became stale after this change and was removed from the script/test wording in this pass.
+
+Status note:
+- Completed on 2026-06-09. Root cause was confirmed by code trace before any implementation. Fix was narrow: 5 source files, ~40 lines added or changed. 6 new regression tests were added for adopted-target read behavior.
+- Live proof rerun completed on 2026-06-10 against a real three-tab Chrome session (`Feed | LinkedIn`, `Example Domain`, `AI Optimizer`). `resume({ adoptTargetId })` returned the intended LinkedIn tab id `70CFAC685C15F58674A08B281A170F77`; `GET /page/url` returned `https://www.linkedin.com/feed/`; `GET /page/text` returned 5052 chars with excerpt content clearly from the signed-in LinkedIn feed. This closes the prior live-proof gap for adopted-target page reads.
+- No focused-tab detection, no Chrome extension work, no long-lived WebSocket orchestration, no retries, no broad refactor.
+- The fix is honest: when `targetTab` is null (no adoption recorded), all routes fall back to first-target semantics exactly as before.

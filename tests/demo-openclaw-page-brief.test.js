@@ -137,6 +137,8 @@ test('brief has correct shape on happy path', async () => {
 });
 
 test('single-tab brief has no multi-tab note', async () => {
+  // M13: the pre-M13 multi-tab note ("url() and text() read first CDP-listed target")
+  // was removed because reads now target the adopted tab. No "multiple tabs" note exists.
   const { adapter } = createAdapter({
     tabs: [{ id: 'T1', url: 'https://example.com', title: 'Example' }],
   });
@@ -147,7 +149,9 @@ test('single-tab brief has no multi-tab note', async () => {
   assert.ok(!brief.page.notes.some((n) => n.includes('multiple tabs')));
 });
 
-test('multi-tab brief includes multi-tab note', async () => {
+test('multi-tab brief does not include stale first-CDP-target note', async () => {
+  // M13: the multi-tab note that said reads go to the first-listed target was removed
+  // because page reads now operate on the explicitly adopted target.
   const { adapter } = createAdapter({
     tabs: [
       { id: 'T1', url: 'https://example.com', title: 'Example' },
@@ -159,7 +163,8 @@ test('multi-tab brief includes multi-tab note', async () => {
   const { brief } = await runPageBrief({ adapter, args: { targetId: 'T1' }, ...streams });
 
   assert.equal(brief.ok, true);
-  assert.ok(brief.page.notes.some((n) => n.includes('multiple tabs')));
+  assert.ok(!brief.page.notes.some((n) => n.includes('multiple tabs')),
+    'stale first-target note must not appear after M13');
 });
 
 test('brief excerpt truncates long text to 500 chars with ellipsis', async () => {

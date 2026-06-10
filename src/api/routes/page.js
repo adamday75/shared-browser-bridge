@@ -61,7 +61,8 @@ export function gotoRoute({ store, session }) {
     }
 
     return guard('goto', () => runPageAction(async () => {
-      await withPage(session, (client) => gotoUrl(client, body.url));
+      const { targetTab } = store.getState();
+      await withPage(session, (client) => gotoUrl(client, body.url), { targetId: targetTab?.id ?? null });
       return { url: body.url };
     }));
   };
@@ -77,7 +78,8 @@ export function clickRoute({ store, session }) {
     }
 
     return guard('click', () => runPageAction(async () => {
-      await withPage(session, (client) => clickSelector(client, body.selector));
+      const { targetTab } = store.getState();
+      await withPage(session, (client) => clickSelector(client, body.selector), { targetId: targetTab?.id ?? null });
       return { selector: body.selector };
     }));
   };
@@ -96,7 +98,8 @@ export function typeRoute({ store, session }) {
     }
 
     return guard('type', () => runPageAction(async () => {
-      await withPage(session, (client) => typeIntoSelector(client, body.selector, body.text));
+      const { targetTab } = store.getState();
+      await withPage(session, (client) => typeIntoSelector(client, body.selector, body.text), { targetId: targetTab?.id ?? null });
       return { selector: body.selector };
     }));
   };
@@ -106,7 +109,10 @@ export function urlRoute({ store, session }) {
   const guard = createHandoffGuard({ store, session });
   return async () => {
     return guard('read:url', () => runPageAction(async () => {
-      const target = await session.getFirstPageTarget();
+      const { targetTab } = store.getState();
+      const target = (targetTab?.id != null)
+        ? await session.getTargetById(targetTab.id)
+        : await session.getFirstPageTarget();
       return { url: target.url };
     }));
   };
@@ -116,7 +122,8 @@ export function textRoute({ store, session }) {
   const guard = createHandoffGuard({ store, session });
   return async () => {
     return guard('read:text', () => runPageAction(async () => {
-      const text = await withPage(session, (client) => getPageText(client));
+      const { targetTab } = store.getState();
+      const text = await withPage(session, (client) => getPageText(client), { targetId: targetTab?.id ?? null });
       return { text };
     }));
   };
@@ -126,7 +133,8 @@ export function snapshotRoute({ store, session }) {
   const guard = createHandoffGuard({ store, session });
   return async () => {
     return guard('read:snapshot', () => runPageAction(async () => {
-      const snapshot = await withPage(session, (client) => getPageSnapshot(client));
+      const { targetTab } = store.getState();
+      const snapshot = await withPage(session, (client) => getPageSnapshot(client), { targetId: targetTab?.id ?? null });
       return { snapshot };
     }));
   };

@@ -79,7 +79,11 @@ export function createHandoffGuard({ store, session }) {
     if (needsTransition && store.getState().controlState === 'AGENT_ACTIVE') {
       if (result?.status === 200) {
         try {
-          const target = await session.getFirstPageTarget();
+          const { targetTab: currentTargetTab } = store.getState();
+          const baselineId = currentTargetTab?.id ?? null;
+          const target = (baselineId != null)
+            ? await session.getTargetById(baselineId)
+            : await session.getFirstPageTarget();
           // Only write the baseline if we still own AGENT_ACTIVE. A concurrent
           // pause that landed during this fetch must not record post-pause browser
           // reality as the new baseline — that would mask drift on the next resume.

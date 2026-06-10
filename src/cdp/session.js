@@ -78,5 +78,14 @@ export function createCdpSession({ endpoint, fetchImpl = fetch }) {
     return target;
   }
 
-  return { endpoint, getVersion, listTabs, getFirstPageTarget };
+  async function getTargetById(id) {
+    const targets = await listPageTargets();
+    const target = targets.find((t) => t.id === id);
+    if (!target) {
+      throw new NoPageTargetError();
+    }
+    return target;
+  }
+
+  return { endpoint, getVersion, listTabs, getFirstPageTarget, getTargetById };
 }

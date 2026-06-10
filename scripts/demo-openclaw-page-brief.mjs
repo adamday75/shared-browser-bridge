@@ -66,14 +66,8 @@ function buildExcerpt(text) {
   return collapsed.slice(0, EXCERPT_MAX_CHARS) + '…';
 }
 
-function buildBrief({ selectedTab, readUrl, pageText, multiTab }) {
+function buildBrief({ selectedTab, readUrl, pageText }) {
   const notes = [];
-  if (multiTab) {
-    notes.push(
-      'multiple tabs open: url() and text() both read the first CDP-listed target, not the adopted tab — ' +
-      'in a single-tab session the two are identical'
-    );
-  }
   notes.push('no model-driven summarization — excerpt is raw page text, whitespace-collapsed');
 
   return {
@@ -281,7 +275,7 @@ export async function runPageBrief({
   }
   logger.ok('verify adoption', `adopted id matches intended (${adoptedTarget.id})`);
 
-  // Step 9a: read URL (operates on first CDP-listed target)
+  // Step 9a: read URL of the adopted target
   let readUrl = null;
   try {
     const { status, body } = await adapter.url();
@@ -297,7 +291,7 @@ export async function runPageBrief({
     return { exitCode: 1, brief: null };
   }
 
-  // Step 9b: read page text (operates on first CDP-listed target)
+  // Step 9b: read page text of the adopted target
   let pageText = null;
   try {
     const { status, body } = await adapter.text();
@@ -314,12 +308,7 @@ export async function runPageBrief({
   }
 
   // Step 10: build structured brief
-  const brief = buildBrief({
-    selectedTab,
-    readUrl,
-    pageText,
-    multiTab: allTabs.length > 1,
-  });
+  const brief = buildBrief({ selectedTab, readUrl, pageText });
 
   stdout.write('\nPASS — page brief produced\n');
   stdout.write('\nWhat this workflow proved:\n');
@@ -330,10 +319,9 @@ export async function runPageBrief({
   stdout.write('  - GET /page/url and GET /page/text completed after adoption\n');
   stdout.write('  - structured page brief produced without model-driven summarization\n');
   stdout.write('\nWhat this workflow did NOT prove:\n');
-  stdout.write('  - url() and text() both read the first CDP-listed target, not the adopted tab;\n');
-  stdout.write("    with multiple tabs open, neither read is guaranteed to reflect the adopted tab\n");
   stdout.write('  - adoption does not affect which tab Chrome displays to the human\n');
   stdout.write('  - page reads are not guaranteed to reflect dynamic or auth-gated content\n');
+  stdout.write('  - true focused/foreground tab detection (not available via CDP HTTP)\n');
 
   stdout.write('\n--- Page Brief (JSON) ---\n');
   stdout.write(JSON.stringify(brief, null, 2));
