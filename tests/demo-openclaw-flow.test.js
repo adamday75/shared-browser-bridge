@@ -64,12 +64,12 @@ test('demo normalizes PAUSED start state before goto', async () => {
   assert.deepEqual(calls, [
     'health',
     'state',
-    'resume:{"force":true}',
+    'resume:{"adoptCurrentTarget":true}',
     'goto:https://example.com',
     'url',
     'pause:demo',
     'state',
-    'resume:{"force":true}',
+    'resume:{"adoptCurrentTarget":true}',
     'state',
   ]);
   assert.match(streams.getStdout(), /\[demo\] resume \(startup\): OK -> ATTACHED/);

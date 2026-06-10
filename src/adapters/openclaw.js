@@ -40,6 +40,31 @@ export function createOpenClawAdapter({
     return request('GET', '/page/url');
   }
 
+  async function text() {
+    return request('GET', '/page/text');
+  }
+
+  async function snapshot() {
+    return request('GET', '/page/snapshot');
+  }
+
+  async function click({ selector }) {
+    if (typeof selector !== 'string' || !selector.trim()) {
+      throw new TypeError('click requires a non-empty selector string');
+    }
+    return request('POST', '/page/click', { selector });
+  }
+
+  async function type({ selector, text: textValue }) {
+    if (typeof selector !== 'string' || !selector.trim()) {
+      throw new TypeError('type requires a non-empty selector string');
+    }
+    if (typeof textValue !== 'string') {
+      throw new TypeError('type requires a text string');
+    }
+    return request('POST', '/page/type', { selector, text: textValue });
+  }
+
   async function pause({ reason } = {}) {
     const body = {};
     if (reason !== undefined) body.reason = reason;
@@ -62,5 +87,5 @@ export function createOpenClawAdapter({
     return request('POST', '/control/recover');
   }
 
-  return { health, tabs, goto, url, pause, resume, state, recover };
+  return { health, tabs, goto, url, text, snapshot, click, type, pause, resume, state, recover };
 }

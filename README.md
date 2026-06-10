@@ -8,6 +8,17 @@ A small local Node service that attaches to a visible Chrome window and exposes 
 
 It is not a production web service, an auth system, or a remotely-deployed daemon. It is intentionally localhost-first and makes no attempt to be hardened for network exposure. The optional bearer token described below is a convenience guard for shared local environments — not a substitute for network-level isolation.
 
+## For OpenClaw agents
+
+Import the adapter and follow the explicit-target workflow:
+
+```js
+import { createOpenClawAdapter } from './src/adapters/openclaw.js';
+const bridge = createOpenClawAdapter(); // default: http://127.0.0.1:7820
+```
+
+See `docs/OPENCLAW_AGENT_QUICKSTART.md` for the full integration guide: method reference, recommended sequence, blocking-code handling, and ambiguity recovery rules.
+
 ## Quickstart
 
 ```sh
@@ -201,7 +212,8 @@ This script enumerates open tabs, selects a target deterministically, resumes wi
 
 ## Docs
 
-- `docs/SHARED_BROWSER_OPERATOR_GUIDE.md` — primary operator/agent usage reference
+- `docs/OPENCLAW_AGENT_QUICKSTART.md` — agent-facing integration guide (method reference, recommended sequence, blocking codes, ambiguity recovery)
+- `docs/SHARED_BROWSER_OPERATOR_GUIDE.md` — full operator/agent reference (environment setup, state machine, resume options, multi-tab examples, safe-agent rules)
 - `docs/BUILD_READY_SPEC.md`
 - `docs/ARCHITECTURE.md`
 - `docs/REVIEW_WORKFLOW.md`

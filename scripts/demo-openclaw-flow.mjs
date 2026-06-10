@@ -2,6 +2,10 @@
 /**
  * M4 Build 1 demo: drives the bridge through a minimal end-to-end flow.
  * Requires the bridge to already be running (npm start) with Chrome attached.
+ *
+ * This demo resumes using adoptCurrentTarget, which operates on the first
+ * CDP-listed tab — not necessarily the human-focused tab. For the recommended
+ * explicit-target workflow, see scripts/demo-explicit-target-flow.mjs.
  */
 import { pathToFileURL } from 'node:url';
 import { createOpenClawAdapter } from '../src/adapters/openclaw.js';
@@ -86,7 +90,7 @@ export async function runDemo({
     });
   } else if (initialState === 'PAUSED') {
     await step('resume (startup)', async () => {
-      const { status, body } = await adapter.resume({ force: true });
+      const { status, body } = await adapter.resume({ adoptCurrentTarget: true });
       if (status !== 200) {
         logger.fail('resume (startup)', `status=${status} error=${body?.error}`);
         failed = true;
@@ -142,7 +146,7 @@ export async function runDemo({
 
   // 8. resume
   await step('resume', async () => {
-    const { status, body } = await adapter.resume({ force: true });
+    const { status, body } = await adapter.resume({ adoptCurrentTarget: true });
     if (status !== 200) {
       logger.fail('resume', `status=${status} error=${body?.error}`);
       failed = true;

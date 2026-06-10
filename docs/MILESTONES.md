@@ -304,3 +304,33 @@ Status note:
 - Completed on 2026-06-09. No code changes were required — M9 is purely documentation and live-proof capture.
 - The live run confirmed that the demo script ran to PASS and explicit-target adoption succeeded in the Windows Chrome + WSL bridge lane.
 - The operator guide Section 4 was updated with the Windows PowerShell `wsl bash -lc` command path for repeatability.
+
+## Milestone 10 — OpenClaw-native integration polish
+
+Goal: reduce friction between "the bridge works" and "an OpenClaw agent can use it naturally, safely, and repeatedly in real work."
+
+Target deliverables:
+- [x] add missing adapter methods: `text()`, `snapshot()`, `click()`, `type()` — completing the full page-action surface
+- [x] add tests for the new adapter methods (validation + serialization)
+- [x] create `docs/OPENCLAW_AGENT_QUICKSTART.md` — concise agent-facing guide answering the four canonical integration questions
+- [x] update README with "For OpenClaw agents" section pointing to the quickstart
+- [x] fix `demo-openclaw-flow.mjs` startup resume from `force: true` to `adoptCurrentTarget: true`
+- [x] update the demo test to match the corrected resume behavior
+
+Acceptance:
+- [x] an OpenClaw agent can call the full page-action surface through the adapter (no raw HTTP calls needed for text, snapshot, click, type)
+- [x] the recommended explicit-target sequence is documented in one concise agent-facing doc
+- [x] the four canonical integration questions are answered directly: how to talk to the bridge, what the explicit-target workflow is, what to do under drift/ambiguity, and what the polished usage path is
+- [x] the M4 demo no longer uses `force: true` for resume (now uses the honest `adoptCurrentTarget`)
+- [x] all existing tests still pass; new tests cover the added adapter surface
+
+Status note:
+- Completed on 2026-06-09.
+- Key gap closed: `src/adapters/openclaw.js` previously exposed only `health`, `tabs`, `goto`, `url`, `pause`, `resume`, `state`, `recover` — omitting `text`, `snapshot`, `click`, and `type` which all existed on the server. Without these, an OpenClaw agent could navigate but could not read page content or interact. M10 completes the adapter surface.
+- New file: `docs/OPENCLAW_AGENT_QUICKSTART.md` — answers the four canonical questions directly in agent-first terms with a complete method table, recommended 8-step sequence, and blocking-code handling examples.
+- `scripts/demo-openclaw-flow.mjs`: startup normalize resume changed from `force: true` to `adoptCurrentTarget: true`. The M4 demo now uses the honest recommended path instead of the force bypass.
+- Tests: 5 new tests in `tests/openclaw-adapter.test.js` cover `click()` and `type()` validation (selector empty, text type) and body serialization including empty-text edge case.
+- What was verified directly in the M10 honesty correction pass: `npm test` → 104 pass, 0 fail (re-run confirmed); adapter serialization for all 4 new methods; client-side validation errors thrown before network call.
+- What was improved only at docs/example level: the quickstart doc and README pointer; no live bridge run in this session.
+- What remains intentionally unproven: round-trip adapter → server integration for text/snapshot/click/type (no combined integration test); live end-to-end execution without a real running bridge + Chrome.
+- What is out of scope: true focused-tab detection; Chrome extension integration; focus-aware architecture.
