@@ -97,7 +97,9 @@ const { body: content } = await bridge.text();
 await bridge.pause({ reason: 'agent work complete' });
 ```
 
-For a runnable proof of this sequence, see `scripts/demo-explicit-target-flow.mjs`.
+For the runnable workflow (adoption + structured page brief), see `scripts/demo-openclaw-page-brief.mjs` (M11 canonical path).
+
+`scripts/demo-explicit-target-flow.mjs` is the earlier M8 proof script — adoption only, no brief, kept as historical reference.
 
 ---
 
@@ -161,5 +163,6 @@ No open browser page tabs. Open a page in Chrome, then call `bridge.recover()`.
 ## 6. Further reading
 
 - `docs/SHARED_BROWSER_OPERATOR_GUIDE.md` — full operator reference: environment setup, state machine, all resume options, multi-tab examples, safe-agent rules, command reference
-- `scripts/demo-explicit-target-flow.mjs` — runnable explicit-target proof script
+- `scripts/demo-openclaw-page-brief.mjs` — M11 canonical runnable workflow: explicit target selection → adoption → structured page brief (JSON)
+- `scripts/demo-explicit-target-flow.mjs` — M8 historical proof script: adoption only, no brief; kept as supporting context
 - `README.md` — quickstart, error codes, WSL setup, drift/recovery introspection reference

@@ -334,3 +334,36 @@ Status note:
 - What was improved only at docs/example level: the quickstart doc and README pointer; no live bridge run in this session.
 - What remains intentionally unproven: round-trip adapter → server integration for text/snapshot/click/type (no combined integration test); live end-to-end execution without a real running bridge + Chrome.
 - What is out of scope: true focused-tab detection; Chrome extension integration; focus-aware architecture.
+
+## Milestone 11 — Inspect a chosen tab and return a structured page brief
+
+Goal: build one narrow, repeatable, OpenClaw-native workflow that selects a tab explicitly, inspects it safely, and returns a structured page brief — making the bridge feel like a real product rather than a transport demo.
+
+Target deliverables:
+- [x] primary M11 artifact: `scripts/demo-openclaw-page-brief.mjs`
+- [x] workflow sequence: `health()` → `state()` → recover if needed → `tabs()` → deterministic selection → `pause()` → `resume({ adoptTargetId })` → verify adoption → `url()` + `text()` → structured brief
+- [x] structured brief output: `{ ok, target: { id, title, url }, page: { readUrl, textLength, excerpt, notes } }`
+- [x] brief printed as delimited JSON block to stdout alongside human-readable progress
+- [x] honest `notes` array embedded in every brief describing read limitations
+- [x] focused tests in `tests/demo-openclaw-page-brief.test.js` (28 tests)
+- [x] docs: `OPENCLAW_AGENT_QUICKSTART.md` references the new workflow as the canonical M11 artifact
+
+Acceptance:
+- [x] workflow selects a tab by `--target-id`, `--match-url`, or `--match-title`
+- [x] adoption is verified by matching `adoptedTarget.id`; missing or mismatched id is a hard FAIL
+- [x] `url()` and `text()` are called as read-only inspection steps
+- [x] structured brief contains target identity + page excerpt + honest notes about read limitations
+- [x] excerpt collapses whitespace and truncates to 500 chars with ellipsis marker
+- [x] multi-tab sessions get an additional note explaining that `url()` and `text()` both read the first CDP-listed target
+- [x] all 132 tests pass (104 prior + 28 new) — builder-local verification; sandbox blocked by EPERM on server-bind tests
+
+Status note:
+- Completed on 2026-06-09.
+- New primary artifact: `scripts/demo-openclaw-page-brief.mjs`.
+- New test file: `tests/demo-openclaw-page-brief.test.js` (28 tests).
+- Brief shape: `{ ok, target: { id, title, url }, page: { readUrl, textLength, excerpt, notes } }`. No model-driven summarization — excerpt is raw page text, whitespace-collapsed.
+- Design choice: `text()` only (not `snapshot()`). The accessibility tree snapshot adds size and parsing complexity without meaningfully improving the excerpt. `text()` is sufficient for a compact, honest read-only brief.
+- The `notes` field is intentional: it embeds the limitation (CDP first-listed target) directly into the brief so agents consuming the JSON see the caveat without consulting separate docs.
+- What was verified directly: 28 page-brief unit tests (mock-adapter, no server bind) pass in this session; prior 104 tests pass builder-local only (server-bind tests return EPERM in this sandbox). Brief structure assertions, excerpt truncation and whitespace collapse, multi-tab note presence/absence, and all failure paths verified in session.
+- What remains intentionally unproven: live bridge + Chrome execution without a real running session; that `text()` reads the adopted tab in a multi-tab setup (documented as a known limitation in brief notes and workflow output); that `snapshot()` would improve brief quality for specific page types.
+- What is out of scope: model-driven summarization; `snapshot()`-based briefs; true focused-tab detection; broader workflow orchestration.
