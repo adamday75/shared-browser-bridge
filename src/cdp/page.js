@@ -1,3 +1,4 @@
+import { WebSocket as WsWebSocket } from 'ws';
 import { CdpConnectionError } from './session.js';
 
 /**
@@ -219,7 +220,10 @@ export async function getPageSnapshot(client) {
  * websocket afterwards — short-lived per-request connections instead of a
  * long-lived session that could go stale across navigations or tab changes.
  */
-export async function withPage(session, action, { WebSocketImpl = WebSocket } = {}) {
+export async function withPage(session, action, { WebSocketImpl = globalThis.WebSocket ?? WsWebSocket } = {}) {
+  if (!WebSocketImpl) {
+    throw new CdpConnectionError(`CDP websocket unavailable in bridge runtime (typeof globalThis.WebSocket=${typeof globalThis.WebSocket})`);
+  }
   const target = await session.getFirstPageTarget();
   if (!target.webSocketDebuggerUrl) {
     throw new PageActionError('active page target has no debugger websocket URL', 502);

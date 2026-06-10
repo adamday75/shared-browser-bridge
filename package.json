@@ -9,5 +9,8 @@
     "start": "node src/index.js",
     "test": "node --test",
     "spec:review": "echo 'Review docs in docs/ before build session'"
+  },
+  "dependencies": {
+    "ws": "^8.21.0"
   }
 }

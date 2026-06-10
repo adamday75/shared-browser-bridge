@@ -367,3 +367,36 @@ Status note:
 - What was verified directly: 28 page-brief unit tests (mock-adapter, no server bind) pass in this session; prior 104 tests pass builder-local only (server-bind tests return EPERM in this sandbox). Brief structure assertions, excerpt truncation and whitespace collapse, multi-tab note presence/absence, and all failure paths verified in session.
 - What remains intentionally unproven: live bridge + Chrome execution without a real running session; that `text()` reads the adopted tab in a multi-tab setup (documented as a known limitation in brief notes and workflow output); that `snapshot()` would improve brief quality for specific page types.
 - What is out of scope: model-driven summarization; `snapshot()`-based briefs; true focused-tab detection; broader workflow orchestration.
+
+## Milestone 12 — Fix live page-read websocket runtime
+
+Goal: fix the real runtime blocker that prevented live `GET /page/text` and `GET /page/snapshot` from working in the long-lived bridge process, then re-run the live M11 workflow honestly.
+
+Target deliverables:
+- [x] root-cause investigation against the real bridge runtime, not just mocked/unit paths
+- [x] minimal runtime fix in `src/cdp/page.js`
+- [x] explicit websocket implementation fallback added for bridge runtimes where `globalThis.WebSocket` is unavailable
+- [x] regression test for the missing-global-WebSocket case
+- [x] live verification of `GET /page/text`
+- [x] live verification of `GET /page/snapshot`
+- [x] live re-run of `scripts/demo-openclaw-page-brief.mjs`
+
+Acceptance:
+- [x] bridge no longer depends solely on Node exposing `globalThis.WebSocket`
+- [x] page reads use `globalThis.WebSocket ?? WsWebSocket`
+- [x] focused regression test proves `withPage()` still works when `globalThis.WebSocket` is unavailable
+- [x] live `/page/text` returns 200 after bridge restart
+- [x] live `/page/snapshot` returns 200 after bridge restart
+- [x] live M11 page-brief flow completes successfully after the fix
+- [x] closeout remains honest that explicit adoption does not change the first-CDP-target read limitation
+
+Status note:
+- Completed on 2026-06-09.
+- Root cause: the long-lived bridge runtime could not rely on `globalThis.WebSocket` being present, even though one-off repros and local route-level repros worked.
+- Fix: add `ws` as an explicit dependency and use `globalThis.WebSocket ?? WsWebSocket` in `withPage()` inside `src/cdp/page.js`.
+- New regression test: `tests/page-websocket-fallback.test.js` proves the page runtime still works when `globalThis.WebSocket` is deliberately unset.
+- What was verified directly in this session: live `GET /page/text` returned 200 with `{\"ok\":true,\"text\":\"\"}`; live `GET /page/snapshot` returned 200 with `{\"ok\":true,\"snapshot\":[]}`; live `scripts/demo-openclaw-page-brief.mjs --match-url example.com` completed successfully and ended with clean handoff to `PAUSED`.
+- Local regression evidence: `tests/page-websocket-fallback.test.js` passed and specifically proved the missing-`globalThis.WebSocket` fallback path. Broader server-binding test slices are sandbox-sensitive (`EPERM` on `127.0.0.1`) and are therefore not used here as the primary proof for M12.
+- Honest live outcome: the workflow now runs successfully, but its read result still reflects the first CDP-listed target (`chrome://newtab/`) rather than the explicitly adopted `https://example.com/`, which is the expected and documented limitation.
+- What remains intentionally unproven: a clean reproducible rerun of the broader server-binding test slice in every sandbox context; full suite rerun beyond the new regression + live checks; any guarantee that page reads reflect the explicitly adopted tab in multi-tab setups; any improvement to focused-tab awareness.
+- What is out of scope: changing the first-CDP-target semantics; focus-aware architecture; extension work; broader workflow redesign.
