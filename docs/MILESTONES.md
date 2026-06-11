@@ -418,6 +418,109 @@ A secondary issue: the handoff guard's post-action baseline update also called `
 - `src/cdp/page.js`: `withPage()` now accepts a `{ targetId }` option; when provided and non-null, calls `session.getTargetById(targetId)` instead of `session.getFirstPageTarget()`
 - `src/api/routes/page.js`: all six page routes (`url`, `text`, `snapshot`, `goto`, `click`, `type`) now read `store.getState().targetTab?.id` and pass it as `targetId`; `urlRoute` uses `session.getTargetById` directly (no WebSocket needed for URL reads)
 - `src/guards/handoff.js`: post-action baseline update now uses `session.getTargetById(targetTab.id)` when an adopted target is recorded, so the adopted tab persists as the baseline across successive operations; falls back to `getFirstPageTarget()` when no adoption exists
+
+## Milestone 14 — LinkedIn follow-up operator proof
+
+Goal: prove the first real startup wedge for the bridge — reliable LinkedIn post-follow-up and interaction support for a solo founder/operator using a trusted browser session.
+
+Primary user:
+- solo startup owner/operator with limited time
+
+Primary in-house proof lane:
+- AI Optimizer LinkedIn first
+
+Target deliverables:
+- [x] deterministic LinkedIn follow-up inspection workflow
+- [x] structured follow-up brief for a chosen LinkedIn post/page context
+- [ ] narrow safe interaction workflow (`inspect`, `draft`, and/or clearly bounded `act` mode)
+- [x] operator docs explaining the proven workflow and its limits
+- [x] honest live proof on the AI Optimizer LinkedIn lane
+
+Acceptance:
+- [x] bridge can reliably reach the intended LinkedIn context in the trusted browser session
+- [x] workflow returns a structured follow-up brief useful for deciding what to do next
+- [x] workflow is proven on the AI Optimizer LinkedIn lane
+- [x] docs state clearly what is actually proven vs not yet proven
+
+Status note:
+- Planned on 2026-06-10 as the next deliberate milestone.
+- Detailed plan lives in `docs/M14_LINKEDIN_FOLLOWUP_OPERATOR_PROOF.md`.
+- This is intentionally the wedge, not a broad all-social milestone.
+- Build 1 live proof passed on 2026-06-11; see `docs/M14_LIVE_TEST_REPORT_2026-06-11.md` and `docs/WINDOWS_CDP_PORTPROXY_SETUP.md`.
+
+### M14 Build 2 — LinkedIn post/thread inspection + draft-prep lane
+
+Goal: deepen M14 from generic LinkedIn follow-up inspection into a more specific owned-post/thread workflow, while staying read-first and non-public by default.
+
+Planned deliverables:
+- [ ] deterministic selection of a narrower LinkedIn owned-post or thread context when available
+- [ ] richer follow-up brief fields oriented around post/thread review, not just generic feed text
+- [ ] bounded draft-preparation lane for comment/reply candidates with no public submission
+- [ ] docs explaining the draft-prep boundary clearly
+
+Acceptance:
+- [ ] workflow can inspect a more specific post/thread context than the generic feed when that context is available
+- [ ] draft suggestions are generated without crossing into public action
+- [ ] inspect-vs-draft boundary stays explicit and honest
+
+Status note:
+- Planned immediately after the successful M14 Build 1 live proof.
+- Keep this narrow: no public submit path, no broad interaction automation, no platform expansion.
+- Builder spec lives in `docs/M14_BUILD_2_POST_THREAD_DRAFT_PREP_SPEC.md`.
+
+## Milestone 15 — LinkedIn interaction reliability hardening
+
+Goal: make the M14 interaction lane trustworthy enough for repeated real use without constant operator anxiety.
+
+Planned deliverables:
+- [ ] clearer failure classification for interaction paths
+- [ ] safer retries / verification where honest
+- [ ] cleaner approval boundary for draft-vs-act decisions
+- [ ] stronger docs around safe repeated use
+
+Acceptance:
+- [ ] repeated use feels operationally trustworthy, not fragile
+- [ ] interaction failures are understandable and bounded
+- [ ] approval/act boundaries stay explicit
+
+Status note:
+- Planned as the follow-on hardening pass after M14 proof.
+- Keep this narrow; do not turn it into broad platform expansion.
+
+## Milestone 16 — X second-platform adaptation
+
+Goal: port the proven follow-up/interactions model from LinkedIn to X without pretending universal platform support.
+
+Planned deliverables:
+- [ ] adapt the proven workflow to X
+- [ ] keep the same honest structured brief model where possible
+- [ ] document platform-specific limits and differences
+
+Acceptance:
+- [ ] X becomes the second proven platform for the same narrow wedge
+- [ ] docs stay explicit about what is shared vs platform-specific
+
+Status note:
+- Planned only after LinkedIn proof + hardening are real.
+- This should remain a second-platform extension, not a rush to every network.
+
+## Milestone 17 — Multi-brand routing
+
+Goal: support a small owned-brand set with the already-proven workflow.
+
+Planned rollout order:
+- [ ] AI Optimizer primary
+- [ ] occasional Adam profile support
+- [ ] occasional Day Place support
+- [ ] Prompt to Process after branding is ready
+
+Acceptance:
+- [ ] workflow can be reused across a small owned-brand set without losing clarity or trust
+- [ ] routing and operator expectations remain simple
+
+Status note:
+- Placeholder milestone only for now.
+- Do not activate until earlier platform reliability is honestly proven.
 - `tests/adopted-target-reads.test.js`: 6 regression tests (new file)
 
 ### What is proven
