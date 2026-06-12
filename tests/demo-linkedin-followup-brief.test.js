@@ -7,6 +7,8 @@ import {
   extractVisibleSignals,
   classifyLinkedInContext,
   generateDrafts,
+  extractSnapshotText,
+  computeContentQuality,
   VALID_MODES,
 } from '../scripts/demo-linkedin-followup-brief.mjs';
 
@@ -32,6 +34,14 @@ function createStreams() {
   };
 }
 
+const DEFAULT_SNAPSHOT_ELEMENTS = [
+  { tag: 'h2', text: 'Some post content about AI Optimizer', id: null },
+  { tag: 'a', text: 'Like', id: null },
+  { tag: 'a', text: 'Comment', id: null },
+  { tag: 'button', text: 'Reply', id: null },
+  { tag: 'a', text: 'Great post! This is really interesting discussion about optimization', id: null },
+];
+
 function createAdapter({
   initialState = 'ATTACHED',
   tabs = [{ id: 'T1', url: 'https://www.linkedin.com/feed/', title: 'LinkedIn' }],
@@ -40,6 +50,7 @@ function createAdapter({
   resumeResult = null,
   urlResult = null,
   textResult = null,
+  snapshotResult = null,
 } = {}) {
   const calls = [];
   let state = initialState;
@@ -86,6 +97,11 @@ function createAdapter({
         if (textResult) return textResult;
         return { status: 200, body: { text: LINKEDIN_POST_TEXT } };
       },
+      async snapshot() {
+        calls.push('snapshot');
+        if (snapshotResult) return snapshotResult;
+        return { status: 200, body: { snapshot: DEFAULT_SNAPSHOT_ELEMENTS } };
+      },
     },
   };
 }
@@ -99,7 +115,7 @@ test('exits 0 on happy path with --target-id', async () => {
   const { exitCode, brief } = await runLinkedInFollowUpBrief({ adapter, args: { targetId: 'T1' }, ...streams });
 
   assert.equal(exitCode, 0);
-  assert.deepEqual(calls, ['health', 'state', 'tabs', 'pause', 'resume:T1', 'url', 'text', 'pause']);
+  assert.deepEqual(calls, ['health', 'state', 'tabs', 'pause', 'resume:T1', 'url', 'text', 'snapshot', 'pause']);
   assert.match(streams.getStdout(), /PASS/);
   assert.equal(streams.getStderr(), '');
   assert.ok(brief !== null);
@@ -114,7 +130,7 @@ test('exits 0 on happy path with --match-url', async () => {
   const { exitCode } = await runLinkedInFollowUpBrief({ adapter, args: { matchUrl: 'linkedin.com' }, ...streams });
 
   assert.equal(exitCode, 0);
-  assert.deepEqual(calls, ['health', 'state', 'tabs', 'pause', 'resume:T1', 'url', 'text', 'pause']);
+  assert.deepEqual(calls, ['health', 'state', 'tabs', 'pause', 'resume:T1', 'url', 'text', 'snapshot', 'pause']);
   assert.match(streams.getStdout(), /PASS/);
 });
 
@@ -127,7 +143,7 @@ test('exits 0 on happy path with --match-title', async () => {
   const { exitCode } = await runLinkedInFollowUpBrief({ adapter, args: { matchTitle: 'LinkedIn' }, ...streams });
 
   assert.equal(exitCode, 0);
-  assert.deepEqual(calls, ['health', 'state', 'tabs', 'pause', 'resume:T1', 'url', 'text', 'pause']);
+  assert.deepEqual(calls, ['health', 'state', 'tabs', 'pause', 'resume:T1', 'url', 'text', 'snapshot', 'pause']);
   assert.match(streams.getStdout(), /PASS/);
 });
 
@@ -212,6 +228,7 @@ test('draft_only mode keeps Build 2 boundary and emits bounded drafts', async ()
 test('brief reports no signals for minimal page text', async () => {
   const { adapter } = createAdapter({
     textResult: { status: 200, body: { text: LINKEDIN_MINIMAL_TEXT } },
+    snapshotResult: { status: 200, body: { snapshot: [] } },
   });
   const streams = createStreams();
 
@@ -284,7 +301,7 @@ test('skips pause when bridge is already PAUSED', async () => {
   const { exitCode } = await runLinkedInFollowUpBrief({ adapter, args: { targetId: 'T1' }, ...streams });
 
   assert.equal(exitCode, 0);
-  assert.deepEqual(calls, ['health', 'state', 'tabs', 'resume:T1', 'url', 'text', 'pause']);
+  assert.deepEqual(calls, ['health', 'state', 'tabs', 'resume:T1', 'url', 'text', 'snapshot', 'pause']);
   assert.match(streams.getStdout(), /pause: skipped \(already PAUSED\)/);
 });
 
@@ -295,7 +312,7 @@ test('recovers from ERROR state before adopting', async () => {
   const { exitCode } = await runLinkedInFollowUpBrief({ adapter, args: { targetId: 'T1' }, ...streams });
 
   assert.equal(exitCode, 0);
-  assert.deepEqual(calls, ['health', 'state', 'recover', 'tabs', 'pause', 'resume:T1', 'url', 'text', 'pause']);
+  assert.deepEqual(calls, ['health', 'state', 'recover', 'tabs', 'pause', 'resume:T1', 'url', 'text', 'snapshot', 'pause']);
   assert.match(streams.getStdout(), /recover: -> ATTACHED/);
 });
 
@@ -306,7 +323,7 @@ test('recovers from DETACHED state before adopting', async () => {
   const { exitCode } = await runLinkedInFollowUpBrief({ adapter, args: { targetId: 'T1' }, ...streams });
 
   assert.equal(exitCode, 0);
-  assert.deepEqual(calls, ['health', 'state', 'recover', 'tabs', 'pause', 'resume:T1', 'url', 'text', 'pause']);
+  assert.deepEqual(calls, ['health', 'state', 'recover', 'tabs', 'pause', 'resume:T1', 'url', 'text', 'snapshot', 'pause']);
 });
 
 // --- Failure paths ---

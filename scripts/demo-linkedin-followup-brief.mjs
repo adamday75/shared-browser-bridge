@@ -206,10 +206,53 @@ function extractVisibleSignals(pageText) {
   };
 }
 
-function buildFollowUpBrief({ selectedTab, readUrl, pageText, mode = 'inspect_only' }) {
+/**
+ * Extract meaningful text from snapshot elements, filtering out nav/button noise.
+ * Snapshot elements are { tag, text, id } objects from GET /page/snapshot.
+ */
+function extractSnapshotText(snapshotElements) {
+  if (!Array.isArray(snapshotElements) || snapshotElements.length === 0) return '';
+
+  // Tags likely to carry content vs. navigation noise
+  const contentTags = new Set(['h1', 'h2', 'h3', 'a']);
+  const noiseTags = new Set(['button', 'input', 'textarea', 'select']);
+
+  const seen = new Set();
+  const parts = [];
+
+  for (const el of snapshotElements) {
+    const text = (el.text ?? '').trim();
+    if (!text || text.length < 3) continue;
+    // Skip duplicate text
+    if (seen.has(text)) continue;
+    seen.add(text);
+
+    // Skip obvious nav/chrome noise from non-content tags
+    if (noiseTags.has(el.tag) && text.length < 20) continue;
+
+    parts.push(text);
+  }
+
+  return parts.join(' ');
+}
+
+/**
+ * Compute content quality based on the best available text length.
+ * Returns 'rich' | 'partial' | 'sparse'.
+ */
+function computeContentQuality(bestTextLength) {
+  if (bestTextLength >= 200) return 'rich';
+  if (bestTextLength >= 50) return 'partial';
+  return 'sparse';
+}
+
+function buildFollowUpBrief({ selectedTab, readUrl, pageText, snapshotText = '', mode = 'inspect_only' }) {
   const isLinkedIn = isLinkedInUrl(readUrl);
-  const signals = extractVisibleSignals(pageText);
-  const contextType = classifyLinkedInContext(readUrl, pageText);
+
+  // Use the richer text source for signal extraction when innerText is sparse
+  const bestText = (pageText.length < 50 && snapshotText.length > pageText.length) ? snapshotText : pageText;
+  const signals = extractVisibleSignals(bestText);
+  const contextType = classifyLinkedInContext(readUrl, bestText);
   const notes = [];
   const limitations = [];
 
@@ -234,6 +277,17 @@ function buildFollowUpBrief({ selectedTab, readUrl, pageText, mode = 'inspect_on
   limitations.push('auth-gated content may not be visible depending on session state');
 
   const excerpt = buildExcerpt(pageText);
+  const combinedExcerpt = (snapshotText.length > pageText.length)
+    ? buildExcerpt(snapshotText)
+    : excerpt;
+  const contentQuality = computeContentQuality(Math.max(pageText.length, snapshotText.length));
+
+  if (contentQuality === 'sparse') {
+    limitations.push('content extraction was sparse — post/thread text may not have loaded fully');
+  }
+  if (snapshotText && snapshotText.length > pageText.length) {
+    notes.push('snapshot provided richer content than innerText — used for signal extraction');
+  }
 
   // Determine suggested mode based on context
   let suggestedMode = 'inspect_only';
@@ -256,6 +310,9 @@ function buildFollowUpBrief({ selectedTab, readUrl, pageText, mode = 'inspect_on
         title: selectedTab.title ?? null,
         textLength: pageText.length,
         excerpt,
+        contentQuality,
+        snapshotTextLength: snapshotText.length,
+        combinedExcerpt,
       },
       visibleSignals: signals,
       suggestedMode,
@@ -343,7 +400,7 @@ export async function runLinkedInFollowUpBrief({
     return { exitCode: 1, brief: null };
   }
 
-  stdout.write('=== LinkedIn Follow-up Brief (M14 Build 2) ===\n');
+  stdout.write('=== LinkedIn Follow-up Brief (M14 Build 3) ===\n');
   stdout.write(`bridge: ${args.baseUrl ?? 'http://127.0.0.1:7820'}\n`);
   stdout.write(`mode: ${mode}\n`);
   if (targetId) stdout.write(`select: --target-id ${targetId}\n`);
@@ -505,8 +562,22 @@ export async function runLinkedInFollowUpBrief({
     return { exitCode: 1, brief: null };
   }
 
+  // Step 9c: read snapshot for richer extraction (graceful degradation if unavailable)
+  let snapshotText = '';
+  try {
+    const { status, body } = await adapter.snapshot();
+    if (status === 200 && Array.isArray(body?.snapshot)) {
+      snapshotText = extractSnapshotText(body.snapshot);
+      logger.ok('read/snapshot', `${body.snapshot.length} elements, ${snapshotText.length} chars extracted`);
+    } else {
+      logger.ok('read/snapshot', 'skipped (unavailable or empty)');
+    }
+  } catch (err) {
+    logger.ok('read/snapshot', `skipped (${err.message})`);
+  }
+
   // Step 10: build structured follow-up brief
-  const brief = buildFollowUpBrief({ selectedTab, readUrl, pageText, mode });
+  const brief = buildFollowUpBrief({ selectedTab, readUrl, pageText, snapshotText, mode });
 
   stdout.write('\nPASS — LinkedIn follow-up brief produced\n');
   stdout.write(`  context type: ${brief.followUp.contextType}\n`);
@@ -554,7 +625,7 @@ export async function runLinkedInFollowUpBrief({
 }
 
 // Exported for testing
-export { isLinkedInUrl, extractVisibleSignals, classifyLinkedInContext, generateDrafts, VALID_MODES };
+export { isLinkedInUrl, extractVisibleSignals, classifyLinkedInContext, generateDrafts, extractSnapshotText, computeContentQuality, VALID_MODES };
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {
