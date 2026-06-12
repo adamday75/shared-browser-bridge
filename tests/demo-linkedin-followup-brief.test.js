@@ -5,6 +5,9 @@ import {
   parseArgs,
   isLinkedInUrl,
   extractVisibleSignals,
+  classifyLinkedInContext,
+  generateDrafts,
+  VALID_MODES,
 } from '../scripts/demo-linkedin-followup-brief.mjs';
 
 const LINKEDIN_POST_TEXT = [
@@ -146,7 +149,9 @@ test('brief has correct follow-up shape on happy path', async () => {
   assert.equal(brief.target.url, 'https://www.linkedin.com/feed/');
 
   assert.equal(brief.followUp.surface, 'linkedin');
+  assert.equal(brief.followUp.contextType, 'feed');
   assert.equal(brief.followUp.suggestedMode, 'inspect_only');
+  assert.deepEqual(brief.followUp.drafts, []);
   assert.equal(brief.followUp.postContext.readUrl, 'https://www.linkedin.com/feed/');
   assert.equal(brief.followUp.postContext.title, 'LinkedIn');
   assert.equal(brief.followUp.postContext.textLength, LINKEDIN_POST_TEXT.length);
@@ -175,6 +180,33 @@ test('brief detects visible signals from LinkedIn post text', async () => {
   assert.equal(brief.followUp.visibleSignals.commentBoxesVisible, true);
   assert.equal(brief.followUp.visibleSignals.replyAffordancesVisible, true);
   assert.ok(brief.followUp.visibleSignals.interactionOpportunities >= 1);
+});
+
+test('draft_only mode keeps Build 2 boundary and emits bounded drafts', async () => {
+  const { adapter } = createAdapter({
+    tabs: [{ id: 'T1', url: 'https://www.linkedin.com/posts/example', title: 'LinkedIn Post' }],
+    urlResult: { status: 200, body: { url: 'https://www.linkedin.com/posts/example' } },
+    textResult: { status: 200, body: { text: LINKEDIN_POST_TEXT } },
+  });
+  const streams = createStreams();
+
+  const { exitCode, brief } = await runLinkedInFollowUpBrief({
+    adapter,
+    args: { targetId: 'T1', mode: 'draft_only' },
+    ...streams,
+  });
+
+  assert.equal(exitCode, 0);
+  assert.equal(brief.followUp.contextType, 'thread');
+  assert.equal(brief.followUp.suggestedMode, 'draft_only');
+  assert.ok(Array.isArray(brief.followUp.drafts));
+  assert.equal(brief.followUp.drafts.length, 2);
+  assert.deepEqual(
+    brief.followUp.drafts.map((draft) => draft.kind),
+    ['reply_candidate', 'comment_candidate'],
+  );
+  assert.match(streams.getStdout(), /mode: draft_only/);
+  assert.match(streams.getStdout(), /drafts generated: 2/);
 });
 
 test('brief reports no signals for minimal page text', async () => {
@@ -298,6 +330,21 @@ test('exits 1 when multiple selector arguments are provided', async () => {
 
   assert.equal(exitCode, 1);
   assert.match(streams.getStderr(), /specify only one of/);
+});
+
+test('exits 1 when mode is invalid', async () => {
+  const { adapter } = createAdapter();
+  const streams = createStreams();
+
+  const { exitCode, brief } = await runLinkedInFollowUpBrief({
+    adapter,
+    args: { targetId: 'T1', mode: 'act_mode' },
+    ...streams,
+  });
+
+  assert.equal(exitCode, 1);
+  assert.equal(brief, null);
+  assert.match(streams.getStderr(), /invalid mode "act_mode"/);
 });
 
 test('exits 1 when health check fails', async () => {
@@ -487,6 +534,31 @@ test('extractVisibleSignals returns zeros for null', () => {
   assert.equal(signals.interactionOpportunities, 0);
 });
 
+// --- Build 2 helpers ---
+
+test('classifyLinkedInContext distinguishes feed post thread profile and unknown', () => {
+  assert.equal(classifyLinkedInContext('https://www.linkedin.com/feed/', ''), 'feed');
+  assert.equal(classifyLinkedInContext('https://www.linkedin.com/in/someone', ''), 'profile');
+  assert.equal(classifyLinkedInContext('https://www.linkedin.com/posts/example', LINKEDIN_MINIMAL_TEXT), 'post');
+  assert.equal(classifyLinkedInContext('https://www.linkedin.com/posts/example', LINKEDIN_POST_TEXT), 'thread');
+  assert.equal(classifyLinkedInContext('https://example.com', ''), 'unknown');
+});
+
+test('generateDrafts stays bounded and context-specific', () => {
+  const drafts = generateDrafts({
+    contextType: 'thread',
+    excerpt: 'Some post content about AI Optimizer.',
+    signals: extractVisibleSignals(LINKEDIN_POST_TEXT),
+    title: 'LinkedIn Post',
+  });
+
+  assert.equal(drafts.length, 2);
+  assert.deepEqual(
+    drafts.map((draft) => draft.kind),
+    ['reply_candidate', 'comment_candidate'],
+  );
+});
+
 // --- parseArgs ---
 
 test('parseArgs extracts all fields from argv', () => {
@@ -494,10 +566,12 @@ test('parseArgs extracts all fields from argv', () => {
     '--base-url', 'http://10.0.0.1:9999',
     '--token', 'secret',
     '--target-id', 'ABC',
+    '--mode', 'draft_only',
   ]);
   assert.equal(args.baseUrl, 'http://10.0.0.1:9999');
   assert.equal(args.token, 'secret');
   assert.equal(args.targetId, 'ABC');
+  assert.equal(args.mode, 'draft_only');
   assert.equal(args.matchUrl, null);
   assert.equal(args.matchTitle, null);
 });
@@ -516,4 +590,9 @@ test('parseArgs defaults when argv is empty', () => {
   assert.equal(args.targetId, null);
   assert.equal(args.matchUrl, null);
   assert.equal(args.matchTitle, null);
+  assert.equal(args.mode, 'inspect_only');
+});
+
+test('VALID_MODES preserves inspect_only and draft_only boundary', () => {
+  assert.deepEqual(VALID_MODES, ['inspect_only', 'draft_only']);
 });
