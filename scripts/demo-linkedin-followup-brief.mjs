@@ -25,6 +25,7 @@
  *   --match-url <str>   Select the one tab whose URL contains this string
  *   --match-title <str> Select the one tab whose title contains this string
  *   --mode <mode>       inspect_only (default) or draft_only
+ *   --debug             Emit snapshot debug dump (element classification, kept/dropped segments)
  *
  * Exits 0 on PASS, 1 on FAIL.
  * Returns { exitCode, brief } — brief is null on failure.
@@ -46,6 +47,7 @@ export function parseArgs(argv) {
     matchUrl: null,
     matchTitle: null,
     mode: 'inspect_only',
+    debug: false,
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -55,6 +57,7 @@ export function parseArgs(argv) {
     else if (arg === '--match-url' && argv[i + 1]) result.matchUrl = argv[++i];
     else if (arg === '--match-title' && argv[i + 1]) result.matchTitle = argv[++i];
     else if (arg === '--mode' && argv[i + 1]) result.mode = argv[++i];
+    else if (arg === '--debug') result.debug = true;
   }
   return result;
 }
@@ -207,15 +210,182 @@ function extractVisibleSignals(pageText) {
 }
 
 /**
- * Extract meaningful text from snapshot elements, filtering out nav/button noise.
+ * LinkedIn chrome/nav noise patterns — short action words and nav strings
+ * that appear as link or button text but carry no post content.
+ * Case-insensitive match against trimmed element text.
+ */
+const LINKEDIN_NOISE_EXACT = new Set([
+  'like', 'comment', 'repost', 'send', 'share', 'save',
+  'follow', 'connect', 'message', 'report', 'copy link',
+  'more', 'see more', 'show more', 'load more', '…',
+  'home', 'my network', 'jobs', 'messaging', 'notifications',
+  'post', 'me', 'work', 'premium', 'try premium',
+  'sign in', 'sign up', 'join now', 'learn more',
+  'edit', 'delete', 'hide', 'mute', 'block',
+  'reactions', 'likes', 'celebrates', 'supports', 'loves',
+  'open to work', 'promoted', 'suggested',
+  // Sidebar / "People" / profile chrome
+  'people', 'people also viewed', 'people you may know',
+  'add to your feed', 'linkedin news', 'today\'s top stories',
+  'show all', 'view all', 'view profile', 'view full profile',
+  'about', 'experience', 'education', 'skills', 'activity',
+  'interests', 'groups', 'events', 'hashtags',
+  'mutual connections', 'mutual connection',
+  'see all activity', 'see all recommendations',
+  // Footer / legal
+  'linkedin corporation', 'user agreement', 'privacy policy',
+  'cookie policy', 'copyright policy', 'brand policy',
+  'accessibility', 'talent solutions', 'community guidelines',
+  // Messaging / overlay
+  'new message', 'start a post', 'write article',
+  'add a photo', 'add a video', 'create an event',
+]);
+
+/**
+ * Patterns that indicate LinkedIn chrome even in longer text.
+ */
+const LINKEDIN_NOISE_PATTERNS = [
+  /^\d+\s*(comments?|likes?|reactions?|reposts?|followers?|connections?)$/i,
+  /^\d+[,.\d]*\s*(comments?|likes?|reactions?|reposts?|followers?|connections?)$/i,
+  /^(liked by|commented on|reposted by|shared by)\b/i,
+  /^you and \d+ other/i,
+  /^(skip to|jump to|go to)\b/i,
+  /^\d+\s*new\s*(notification|message)/i,
+  // Profile / sidebar / card patterns
+  /^\d+\s*(mutual\s+connections?|endorsements?)$/i,
+  /^(connect with|follow)\s+\w/i,
+  /^(view|see)\s+(all|more|\d+)\b/i,
+  /^(posted|shared|commented)\s+\d+\s*(d|h|w|m|mo|yr|day|hour|week|month|year)s?\s*(ago)?$/i,
+  /^[\w\s]+(university|college|school|institute)\s*$/i,
+  /^(sr|jr|senior|junior|lead|head|chief|vp|director|manager|engineer|developer|analyst|consultant|associate|intern)\b.{0,50}$/i,
+  /^\d+(st|nd|rd|th)\+?\s*$/i,
+  /^[•·|–—-]\s*$/,
+];
+
+/**
+ * Returns true if the text looks like LinkedIn chrome/nav noise.
+ */
+function isLinkedInNoise(text) {
+  const lower = text.toLowerCase().trim();
+  if (LINKEDIN_NOISE_EXACT.has(lower)) return true;
+  return LINKEDIN_NOISE_PATTERNS.some((p) => p.test(text));
+}
+
+/**
+ * Build a debug dump of snapshot elements for inspection.
+ * Groups elements by tag, shows what was kept vs filtered, and surfaces
+ * the exact text segments feeding into signal extraction.
+ * Returns a plain object suitable for JSON serialization.
+ */
+function buildSnapshotDebugDump(snapshotElements, filteredText, rawText, pageText) {
+  if (!Array.isArray(snapshotElements) || snapshotElements.length === 0) {
+    return {
+      elementCount: 0,
+      tagDistribution: {},
+      filteredSegments: [],
+      droppedSegments: [],
+      rawTextLength: 0,
+      filteredTextLength: 0,
+      pageTextLength: pageText?.length ?? 0,
+      signalSourceUsed: 'pageText',
+    };
+  }
+
+  // Tag distribution
+  const tagCounts = {};
+  for (const el of snapshotElements) {
+    const tag = el.tag ?? '(none)';
+    tagCounts[tag] = (tagCounts[tag] ?? 0) + 1;
+  }
+
+  // Classify each element as kept or dropped by the filter
+  const noiseTags = new Set(['button', 'input', 'textarea', 'select', 'nav', 'footer', 'header']);
+  const seen = new Set();
+  const filteredSegments = [];
+  const droppedSegments = [];
+
+  for (const el of snapshotElements) {
+    const text = (el.text ?? '').trim();
+    if (!text || text.length < 3) {
+      if (text) droppedSegments.push({ tag: el.tag, text, reason: 'too_short' });
+      continue;
+    }
+    if (seen.has(text)) {
+      droppedSegments.push({ tag: el.tag, text: text.slice(0, 80), reason: 'duplicate' });
+      continue;
+    }
+    seen.add(text);
+
+    // Replay the filter logic to classify
+    if (noiseTags.has(el.tag) && text.length < 40) {
+      droppedSegments.push({ tag: el.tag, text, reason: 'noise_tag' });
+      continue;
+    }
+    if (isLinkedInNoise(text)) {
+      droppedSegments.push({ tag: el.tag, text, reason: 'linkedin_noise' });
+      continue;
+    }
+    if (el.tag === 'a' && text.length < ANCHOR_MIN_CONTENT_LENGTH) {
+      droppedSegments.push({ tag: el.tag, text, reason: 'short_anchor' });
+      continue;
+    }
+    filteredSegments.push({ tag: el.tag, text: text.slice(0, 200), charLen: text.length });
+  }
+
+  const signalSourceUsed = (pageText.length < 50 && rawText.length > pageText.length) ? 'rawSnapshotText' : 'pageText';
+
+  return {
+    elementCount: snapshotElements.length,
+    tagDistribution: tagCounts,
+    filteredSegments,
+    filteredSegmentCount: filteredSegments.length,
+    droppedSegments,
+    droppedSegmentCount: droppedSegments.length,
+    rawTextLength: rawText.length,
+    filteredTextLength: filteredText.length,
+    pageTextLength: pageText?.length ?? 0,
+    signalSourceUsed,
+  };
+}
+
+/**
+ * Extract raw text from snapshot elements with only dedup and basic cleanup.
+ * Used for signal extraction so that chrome words like "comment", "reply"
+ * are still visible to the signal detector even though they are noise for excerpts.
+ */
+function extractRawSnapshotText(snapshotElements) {
+  if (!Array.isArray(snapshotElements) || snapshotElements.length === 0) return '';
+  const seen = new Set();
+  const parts = [];
+  for (const el of snapshotElements) {
+    const text = (el.text ?? '').trim();
+    if (!text || text.length < 3) continue;
+    if (seen.has(text)) continue;
+    seen.add(text);
+    parts.push(text);
+  }
+  return parts.join(' ');
+}
+
+/**
+ * Extract meaningful text from snapshot elements, filtering out nav/button noise
+ * and LinkedIn chrome patterns.
  * Snapshot elements are { tag, text, id } objects from GET /page/snapshot.
  */
+/**
+ * Minimum character length for anchor/link text to be considered content.
+ * Most LinkedIn nav/chrome links are short labels (profile names, action words).
+ * Genuine post content in <a> tags tends to be longer.
+ */
+const ANCHOR_MIN_CONTENT_LENGTH = 30;
+
 function extractSnapshotText(snapshotElements) {
   if (!Array.isArray(snapshotElements) || snapshotElements.length === 0) return '';
 
-  // Tags likely to carry content vs. navigation noise
-  const contentTags = new Set(['h1', 'h2', 'h3', 'a']);
-  const noiseTags = new Set(['button', 'input', 'textarea', 'select']);
+  // Tags that carry content headings
+  const headingTags = new Set(['h1', 'h2', 'h3', 'h4', 'p', 'span', 'div', 'article', 'section']);
+  // Tags that are almost always UI chrome
+  const noiseTags = new Set(['button', 'input', 'textarea', 'select', 'nav', 'footer', 'header']);
 
   const seen = new Set();
   const parts = [];
@@ -223,12 +393,17 @@ function extractSnapshotText(snapshotElements) {
   for (const el of snapshotElements) {
     const text = (el.text ?? '').trim();
     if (!text || text.length < 3) continue;
-    // Skip duplicate text
     if (seen.has(text)) continue;
     seen.add(text);
 
-    // Skip obvious nav/chrome noise from non-content tags
-    if (noiseTags.has(el.tag) && text.length < 20) continue;
+    // Skip noise tags — raise threshold to 40 chars (longer button labels are still chrome)
+    if (noiseTags.has(el.tag) && text.length < 40) continue;
+
+    // Skip LinkedIn-specific chrome/nav noise regardless of tag
+    if (isLinkedInNoise(text)) continue;
+
+    // Anchor tags: only keep if text is long enough to likely be content, not a nav label
+    if (el.tag === 'a' && text.length < ANCHOR_MIN_CONTENT_LENGTH) continue;
 
     parts.push(text);
   }
@@ -246,11 +421,14 @@ function computeContentQuality(bestTextLength) {
   return 'sparse';
 }
 
-function buildFollowUpBrief({ selectedTab, readUrl, pageText, snapshotText = '', mode = 'inspect_only' }) {
+function buildFollowUpBrief({ selectedTab, readUrl, pageText, snapshotText = '', rawSnapshotText = '', mode = 'inspect_only' }) {
   const isLinkedIn = isLinkedInUrl(readUrl);
 
-  // Use the richer text source for signal extraction when innerText is sparse
-  const bestText = (pageText.length < 50 && snapshotText.length > pageText.length) ? snapshotText : pageText;
+  // Use raw (unfiltered) snapshot text for signal extraction so that chrome words
+  // like "comment" and "reply" are still visible to the signal detector.
+  // The filtered snapshotText is used only for excerpts and length reporting.
+  const signalText = rawSnapshotText || snapshotText;
+  const bestText = (pageText.length < 50 && signalText.length > pageText.length) ? signalText : pageText;
   const signals = extractVisibleSignals(bestText);
   const contextType = classifyLinkedInContext(readUrl, bestText);
   const notes = [];
@@ -380,7 +558,7 @@ export async function runLinkedInFollowUpBrief({
   stdout = process.stdout,
   stderr = process.stderr,
 } = {}) {
-  const { targetId = null, matchUrl = null, matchTitle = null, mode = 'inspect_only' } = args;
+  const { targetId = null, matchUrl = null, matchTitle = null, mode = 'inspect_only', debug = false } = args;
   const logger = createLogger(stdout, stderr);
 
   // Validate mode
@@ -400,7 +578,7 @@ export async function runLinkedInFollowUpBrief({
     return { exitCode: 1, brief: null };
   }
 
-  stdout.write('=== LinkedIn Follow-up Brief (M14 Build 3) ===\n');
+  stdout.write('=== LinkedIn Follow-up Brief (M14 Build 4) ===\n');
   stdout.write(`bridge: ${args.baseUrl ?? 'http://127.0.0.1:7820'}\n`);
   stdout.write(`mode: ${mode}\n`);
   if (targetId) stdout.write(`select: --target-id ${targetId}\n`);
@@ -564,11 +742,15 @@ export async function runLinkedInFollowUpBrief({
 
   // Step 9c: read snapshot for richer extraction (graceful degradation if unavailable)
   let snapshotText = '';
+  let rawSnapshotText = '';
+  let snapshotElements = [];
   try {
     const { status, body } = await adapter.snapshot();
     if (status === 200 && Array.isArray(body?.snapshot)) {
-      snapshotText = extractSnapshotText(body.snapshot);
-      logger.ok('read/snapshot', `${body.snapshot.length} elements, ${snapshotText.length} chars extracted`);
+      snapshotElements = body.snapshot;
+      snapshotText = extractSnapshotText(snapshotElements);
+      rawSnapshotText = extractRawSnapshotText(snapshotElements);
+      logger.ok('read/snapshot', `${snapshotElements.length} elements, ${snapshotText.length} chars filtered, ${rawSnapshotText.length} chars raw`);
     } else {
       logger.ok('read/snapshot', 'skipped (unavailable or empty)');
     }
@@ -576,8 +758,16 @@ export async function runLinkedInFollowUpBrief({
     logger.ok('read/snapshot', `skipped (${err.message})`);
   }
 
+  // Step 9d: debug dump of snapshot internals (--debug only)
+  if (debug) {
+    const debugDump = buildSnapshotDebugDump(snapshotElements, snapshotText, rawSnapshotText, pageText);
+    stdout.write('\n--- Debug: Snapshot Inspection ---\n');
+    stdout.write(JSON.stringify(debugDump, null, 2));
+    stdout.write('\n--- End Debug: Snapshot Inspection ---\n\n');
+  }
+
   // Step 10: build structured follow-up brief
-  const brief = buildFollowUpBrief({ selectedTab, readUrl, pageText, snapshotText, mode });
+  const brief = buildFollowUpBrief({ selectedTab, readUrl, pageText, snapshotText, rawSnapshotText, mode });
 
   stdout.write('\nPASS — LinkedIn follow-up brief produced\n');
   stdout.write(`  context type: ${brief.followUp.contextType}\n`);
@@ -625,7 +815,7 @@ export async function runLinkedInFollowUpBrief({
 }
 
 // Exported for testing
-export { isLinkedInUrl, extractVisibleSignals, classifyLinkedInContext, generateDrafts, extractSnapshotText, computeContentQuality, VALID_MODES };
+export { isLinkedInUrl, extractVisibleSignals, classifyLinkedInContext, generateDrafts, extractSnapshotText, extractRawSnapshotText, buildSnapshotDebugDump, isLinkedInNoise, computeContentQuality, VALID_MODES };
 
 const isMain = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (isMain) {

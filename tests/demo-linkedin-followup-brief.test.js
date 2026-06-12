@@ -8,6 +8,9 @@ import {
   classifyLinkedInContext,
   generateDrafts,
   extractSnapshotText,
+  extractRawSnapshotText,
+  buildSnapshotDebugDump,
+  isLinkedInNoise,
   computeContentQuality,
   VALID_MODES,
 } from '../scripts/demo-linkedin-followup-brief.mjs';
@@ -39,7 +42,7 @@ const DEFAULT_SNAPSHOT_ELEMENTS = [
   { tag: 'a', text: 'Like', id: null },
   { tag: 'a', text: 'Comment', id: null },
   { tag: 'button', text: 'Reply', id: null },
-  { tag: 'a', text: 'Great post! This is really interesting discussion about optimization', id: null },
+  { tag: 'a', text: 'Great post! This is really interesting discussion about optimization and it continues here', id: null },
 ];
 
 function createAdapter({
@@ -612,4 +615,263 @@ test('parseArgs defaults when argv is empty', () => {
 
 test('VALID_MODES preserves inspect_only and draft_only boundary', () => {
   assert.deepEqual(VALID_MODES, ['inspect_only', 'draft_only']);
+});
+
+// --- Build 4: De-noise behavior ---
+
+test('isLinkedInNoise catches exact chrome terms', () => {
+  assert.equal(isLinkedInNoise('Like'), true);
+  assert.equal(isLinkedInNoise('Comment'), true);
+  assert.equal(isLinkedInNoise('Repost'), true);
+  assert.equal(isLinkedInNoise('Follow'), true);
+  assert.equal(isLinkedInNoise('People also viewed'), true);
+  assert.equal(isLinkedInNoise('Add to your feed'), true);
+  assert.equal(isLinkedInNoise('LinkedIn News'), true);
+  assert.equal(isLinkedInNoise('View profile'), true);
+  assert.equal(isLinkedInNoise('Privacy Policy'), true);
+});
+
+test('isLinkedInNoise catches count patterns', () => {
+  assert.equal(isLinkedInNoise('3 comments'), true);
+  assert.equal(isLinkedInNoise('12 likes'), true);
+  assert.equal(isLinkedInNoise('1,234 followers'), true);
+  assert.equal(isLinkedInNoise('5 reactions'), true);
+});
+
+test('isLinkedInNoise catches sidebar/profile patterns', () => {
+  assert.equal(isLinkedInNoise('View all 5'), true);
+  assert.equal(isLinkedInNoise('See more'), true);
+  assert.equal(isLinkedInNoise('posted 2d ago'), true);
+  assert.equal(isLinkedInNoise('shared 1w ago'), true);
+  assert.equal(isLinkedInNoise('Senior Software Engineer at Company'), true);
+});
+
+test('isLinkedInNoise does not flag real content', () => {
+  assert.equal(isLinkedInNoise('This is a thoughtful discussion about AI optimization strategies'), false);
+  assert.equal(isLinkedInNoise('We just shipped a new feature that reduces latency by 40%'), false);
+});
+
+test('extractSnapshotText filters short anchor tags as nav noise', () => {
+  const elements = [
+    { tag: 'h2', text: 'Important post about machine learning models', id: null },
+    { tag: 'a', text: 'John Smith', id: null },           // short anchor = nav
+    { tag: 'a', text: 'View profile', id: null },          // noise exact match
+    { tag: 'a', text: 'AI Startup Co', id: null },         // short anchor = nav
+    { tag: 'a', text: 'This is a genuinely insightful comment about the implications of this research', id: null }, // long anchor = content
+  ];
+  const result = extractSnapshotText(elements);
+  assert.ok(result.includes('Important post about machine learning models'));
+  assert.ok(!result.includes('John Smith'));
+  assert.ok(!result.includes('View profile'));
+  assert.ok(!result.includes('AI Startup Co'));
+  assert.ok(result.includes('genuinely insightful comment'));
+});
+
+test('extractSnapshotText filters button/nav tags with raised threshold', () => {
+  const elements = [
+    { tag: 'h2', text: 'Post content here', id: null },
+    { tag: 'button', text: 'Show more comments', id: null },   // < 40 chars, noise tag
+    { tag: 'button', text: 'Sign in to see who liked this', id: null }, // < 40 chars, noise tag
+    { tag: 'nav', text: 'Home My Network Jobs', id: null },    // < 40 chars, noise tag
+  ];
+  const result = extractSnapshotText(elements);
+  assert.ok(result.includes('Post content here'));
+  assert.ok(!result.includes('Show more comments'));
+  assert.ok(!result.includes('Sign in'));
+  assert.ok(!result.includes('Home My Network'));
+});
+
+test('extractSnapshotText preserves heading and long content elements', () => {
+  const elements = [
+    { tag: 'h1', text: 'Announcing our Series B funding round', id: null },
+    { tag: 'h2', text: 'Key takeaways from the latest AI safety research paper', id: null },
+    { tag: 'span', text: 'We are excited to share that our team has been working on a breakthrough approach to model alignment', id: null },
+  ];
+  const result = extractSnapshotText(elements);
+  assert.ok(result.includes('Series B funding'));
+  assert.ok(result.includes('AI safety research'));
+  assert.ok(result.includes('breakthrough approach'));
+});
+
+// --- Build 4C: Debug inspection ---
+
+test('parseArgs parses --debug flag', () => {
+  const args = parseArgs(['--match-url', 'linkedin.com', '--debug']);
+  assert.equal(args.debug, true);
+  assert.equal(args.matchUrl, 'linkedin.com');
+});
+
+test('parseArgs defaults debug to false', () => {
+  const args = parseArgs(['--match-url', 'linkedin.com']);
+  assert.equal(args.debug, false);
+});
+
+test('--debug emits snapshot inspection dump in stdout', async () => {
+  const { adapter } = createAdapter({
+    tabs: [{ id: 'T1', url: 'https://www.linkedin.com/posts/example', title: 'LinkedIn Post' }],
+    urlResult: { status: 200, body: { url: 'https://www.linkedin.com/posts/example' } },
+    textResult: { status: 200, body: { text: LINKEDIN_POST_TEXT } },
+  });
+  const streams = createStreams();
+
+  const { exitCode } = await runLinkedInFollowUpBrief({
+    adapter,
+    args: { targetId: 'T1', debug: true },
+    ...streams,
+  });
+
+  assert.equal(exitCode, 0);
+  const out = streams.getStdout();
+  assert.match(out, /--- Debug: Snapshot Inspection ---/);
+  assert.match(out, /--- End Debug: Snapshot Inspection ---/);
+  assert.match(out, /"elementCount"/);
+  assert.match(out, /"tagDistribution"/);
+  assert.match(out, /"filteredSegments"/);
+  assert.match(out, /"droppedSegments"/);
+});
+
+test('--debug not present omits snapshot inspection dump', async () => {
+  const { adapter } = createAdapter();
+  const streams = createStreams();
+
+  const { exitCode } = await runLinkedInFollowUpBrief({
+    adapter,
+    args: { targetId: 'T1' },
+    ...streams,
+  });
+
+  assert.equal(exitCode, 0);
+  const out = streams.getStdout();
+  assert.ok(!out.includes('Debug: Snapshot Inspection'));
+});
+
+test('buildSnapshotDebugDump classifies elements correctly', () => {
+  const elements = [
+    { tag: 'h2', text: 'Important post about machine learning models', id: null },
+    { tag: 'a', text: 'John Smith', id: null },
+    { tag: 'button', text: 'Like', id: null },
+    { tag: 'a', text: '3 comments', id: null },
+    { tag: 'span', text: 'This is genuinely insightful analysis about the implications of this research for production systems', id: null },
+    { tag: 'a', text: 'ab', id: null },  // too short
+  ];
+  const filtered = extractSnapshotText(elements);
+  const raw = extractRawSnapshotText(elements);
+  const dump = buildSnapshotDebugDump(elements, filtered, raw, 'short page');
+
+  assert.equal(dump.elementCount, 6);
+  assert.equal(dump.tagDistribution['h2'], 1);
+  assert.equal(dump.tagDistribution['a'], 3);
+  assert.equal(dump.tagDistribution['button'], 1);
+  assert.equal(dump.tagDistribution['span'], 1);
+
+  // h2 and span should be kept, a short + button should be dropped
+  assert.equal(dump.filteredSegmentCount, 2);
+  assert.ok(dump.filteredSegments.some((s) => s.text.includes('machine learning')));
+  assert.ok(dump.filteredSegments.some((s) => s.text.includes('genuinely insightful')));
+
+  // Dropped: John Smith (short_anchor), Like (noise_tag), 3 comments (linkedin_noise), ab (too_short)
+  assert.equal(dump.droppedSegmentCount, 4);
+  assert.ok(dump.droppedSegments.some((s) => s.reason === 'short_anchor'));
+  assert.ok(dump.droppedSegments.some((s) => s.reason === 'noise_tag'));
+  assert.ok(dump.droppedSegments.some((s) => s.reason === 'linkedin_noise'));
+  assert.ok(dump.droppedSegments.some((s) => s.reason === 'too_short'));
+
+  // With short pageText, signal source should be rawSnapshotText
+  assert.equal(dump.signalSourceUsed, 'rawSnapshotText');
+});
+
+test('buildSnapshotDebugDump handles empty snapshot', () => {
+  const dump = buildSnapshotDebugDump([], '', '', 'some page text');
+  assert.equal(dump.elementCount, 0);
+  assert.deepEqual(dump.tagDistribution, {});
+  assert.deepEqual(dump.filteredSegments, []);
+  assert.deepEqual(dump.droppedSegments, []);
+});
+
+test('extractRawSnapshotText preserves chrome words for signal detection', () => {
+  const elements = [
+    { tag: 'button', text: 'Comment', id: null },
+    { tag: 'button', text: 'Reply', id: null },
+    { tag: 'a', text: '3 comments', id: null },
+    { tag: 'h2', text: 'Post content here', id: null },
+  ];
+  const raw = extractRawSnapshotText(elements);
+  const filtered = extractSnapshotText(elements);
+
+  // Raw should contain signal words that filtered drops
+  assert.ok(raw.includes('Comment'), 'raw should keep Comment');
+  assert.ok(raw.includes('Reply'), 'raw should keep Reply');
+  assert.ok(raw.includes('3 comments'), 'raw should keep 3 comments');
+
+  // Filtered should drop them
+  assert.ok(!filtered.includes('Comment'), 'filtered should drop Comment');
+  assert.ok(!filtered.includes('Reply'), 'filtered should drop Reply');
+});
+
+test('rawSnapshotText is passed to buildFollowUpBrief for signal extraction', async () => {
+  // Simulate a page where pageText is short and snapshot has signal words
+  // that would be filtered out by extractSnapshotText but kept by extractRawSnapshotText
+  const snapshotWithSignals = [
+    { tag: 'h2', text: 'Post content about AI', id: null },
+    { tag: 'button', text: 'Comment', id: null },
+    { tag: 'button', text: 'Reply', id: null },
+    { tag: 'a', text: 'Add a comment', id: null },
+  ];
+  const { adapter } = createAdapter({
+    tabs: [{ id: 'T1', url: 'https://www.linkedin.com/posts/example', title: 'Post' }],
+    urlResult: { status: 200, body: { url: 'https://www.linkedin.com/posts/example' } },
+    textResult: { status: 200, body: { text: 'short' } },
+    snapshotResult: { status: 200, body: { snapshot: snapshotWithSignals } },
+  });
+  const streams = createStreams();
+
+  const { exitCode, brief } = await runLinkedInFollowUpBrief({
+    adapter,
+    args: { targetId: 'T1' },
+    ...streams,
+  });
+
+  assert.equal(exitCode, 0);
+  // With rawSnapshotText feeding signal extraction, signals should be detected
+  assert.equal(brief.followUp.visibleSignals.commentsPresent, true, 'should detect comments via raw snapshot');
+  assert.equal(brief.followUp.visibleSignals.replyAffordancesVisible, true, 'should detect reply via raw snapshot');
+});
+
+test('extractSnapshotText produces cleaner output for realistic LinkedIn snapshot', () => {
+  // Simulate a realistic LinkedIn post page snapshot with mixed chrome and content
+  const elements = [
+    { tag: 'a', text: 'Home', id: null },
+    { tag: 'a', text: 'My Network', id: null },
+    { tag: 'a', text: 'Jobs', id: null },
+    { tag: 'a', text: 'Messaging', id: null },
+    { tag: 'a', text: 'Notifications', id: null },
+    { tag: 'button', text: 'Post', id: null },
+    { tag: 'a', text: 'Jane Doe', id: null },
+    { tag: 'span', text: 'Senior Product Manager at TechCorp', id: null },
+    { tag: 'h2', text: 'Thrilled to share our latest research on responsible AI deployment in production systems', id: null },
+    { tag: 'span', text: 'Our team spent six months building a framework that allows enterprises to monitor model behavior in real-time', id: null },
+    { tag: 'button', text: 'Like', id: null },
+    { tag: 'button', text: 'Comment', id: null },
+    { tag: 'button', text: 'Repost', id: null },
+    { tag: 'button', text: 'Send', id: null },
+    { tag: 'a', text: '42 reactions', id: null },
+    { tag: 'a', text: '8 comments', id: null },
+    { tag: 'a', text: 'People also viewed', id: null },
+    { tag: 'a', text: 'Add to your feed', id: null },
+    { tag: 'a', text: 'LinkedIn News', id: null },
+  ];
+  const result = extractSnapshotText(elements);
+
+  // Content should be present
+  assert.ok(result.includes('responsible AI deployment'), 'should keep post heading');
+  assert.ok(result.includes('monitor model behavior'), 'should keep post body');
+
+  // Chrome should be absent
+  assert.ok(!result.includes('Home'), 'should filter nav: Home');
+  assert.ok(!result.includes('My Network'), 'should filter nav: My Network');
+  assert.ok(!result.includes('Jane Doe'), 'should filter short anchor: author name');
+  assert.ok(!result.includes('42 reactions'), 'should filter count pattern');
+  assert.ok(!result.includes('8 comments'), 'should filter count pattern');
+  assert.ok(!result.includes('People also viewed'), 'should filter sidebar noise');
+  assert.ok(!result.includes('LinkedIn News'), 'should filter sidebar noise');
 });
