@@ -1259,6 +1259,33 @@ const PAGE_TEXT_POST_TERMINATORS = [
   /^author$/i,
 ];
 
+const PAGE_TEXT_SHELL_PATTERNS = [
+  /^\d+\s*(m|h|d|w|mo|yr)\s*[•·-]?$/i,
+  /\bview my newsletter\b/i,
+  /\bvisible to anyone\b/i,
+  /\bfollowing\b/i,
+  /\bauthor\b/i,
+];
+
+function looksLikePageTextShellLine(line, authorName = null) {
+  if (!line) return false;
+  const collapsed = line.replace(/\s+/g, ' ').trim();
+  const lower = collapsed.toLowerCase();
+  const authorLower = authorName ? authorName.toLowerCase() : null;
+
+  if (authorLower && lower.includes(authorLower)) return true;
+  if (PAGE_TEXT_SHELL_PATTERNS.some(pattern => pattern.test(collapsed))) return true;
+  if (POST_BODY_SHELL_PATTERNS.some(pattern => pattern.test(collapsed))) return true;
+
+  const bulletCount = (collapsed.match(/[•·|]/g) || []).length;
+  const hasSentencePunctuation = /[.!?]/.test(collapsed);
+  const wordCount = collapsed.split(/\s+/).filter(w => w.length > 1).length;
+
+  if (bulletCount >= 1 && !hasSentencePunctuation && wordCount >= 3) return true;
+
+  return false;
+}
+
 function looksLikePostBodyLine(line) {
   if (!line) return false;
   if (/^-\s+/.test(line)) return true;
@@ -1304,6 +1331,7 @@ function extractPostBodyFromPageText(pageText, readUrl, authorName = null) {
 
   let startIdx = -1;
   for (let i = scanStart; i < lines.length; i++) {
+    if (looksLikePageTextShellLine(lines[i], authorName)) continue;
     if (looksLikePostBodyLine(lines[i])) {
       startIdx = i;
       break;
@@ -1320,6 +1348,8 @@ function extractPostBodyFromPageText(pageText, readUrl, authorName = null) {
     const lower = line.toLowerCase();
 
     if (PAGE_TEXT_POST_TERMINATORS.some(pattern => pattern.test(line))) break;
+
+    if (seenContentLines === 0 && looksLikePageTextShellLine(line, authorName)) continue;
 
     if (authorLower && seenContentLines >= 2 && lower.includes(authorLower)) break;
 
@@ -1667,7 +1697,7 @@ function buildHumanCommentDraft({ primary, secondary, mode = 'comment' }) {
     return 'The “one layer down” framing is the part that really lands for me. The gap between what founders are building and what investors are actually paying for feels like the more useful signal.';
   }
 
-  if (/open knowledge format|okf|markdown files|write one in a text editor|ai agents/.test(joined)) {
+  if (/open knowledge format|\bokf\b|markdown files|write one in a text editor|knowledge catalog|google cloud/.test(joined)) {
     if (mode === 'reply') {
       return 'This is the first framing of AI-readability infrastructure that feels practical to me. Once the standard is just markdown and a clear structure, it stops sounding like AI theater and starts looking like normal web plumbing.';
     }
@@ -1679,6 +1709,13 @@ function buildHumanCommentDraft({ primary, secondary, mode = 'comment' }) {
       return 'This is the right read. The gap between what everyone says they’re building and what investors are actually paying for is a much better signal than the surface AI-agent narrative.';
     }
     return 'This is the right read. The gap between what everyone says they’re building and what investors are actually paying for is a much better signal than the surface AI-agent narrative.';
+  }
+
+  if (/buy more ai|pr volume is up 76|migrations that took months now take days|ai coding tools every week/.test(joined)) {
+    if (mode === 'reply') {
+      return 'This is the part people usually miss. The visible AI lift gets all the attention, but results like this usually sit on top of much more boring standardization underneath. Otherwise you just speed up the mess.';
+    }
+    return 'This is the part people usually miss. The visible AI lift gets all the attention, but results like this usually sit on top of much more boring standardization underneath. Otherwise you just speed up the mess.';
   }
 
   const primaryClause = sentenceToClause(primary);

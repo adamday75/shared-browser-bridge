@@ -2142,6 +2142,79 @@ test('OKF-style grounded drafts sound sharper and more opinionated', () => {
   assert.equal(commentDraft.includes('Most relevant'), false);
 });
 
+test('Basia-style AI coding post does not cross-fire into the OKF canned draft', () => {
+  const brief = buildFollowUpBrief({
+    selectedTab: { id: 'T1', title: 'Post | LinkedIn', url: 'https://www.linkedin.com/feed/update/urn:li:activity:7473721297433329665/' },
+    readUrl: 'https://www.linkedin.com/feed/update/urn:li:activity:7473721297433329665/',
+    pageText: [
+      'Feed post',
+      'Basia Kubicka • Following',
+      'AI PM · Vibe Coding · AI Agents · Ex-AI PM @ API dev platform (Sequoia-backed), Ex-founder (Techstars-backed)',
+      '1d •',
+      'Spotify just showed Anthropic how to ship with AI.',
+      'Today, 99% of them use AI coding tools every week. Their PR volume is up 76%, and migrations that took months now take days.',
+      'So everyone assumes the lesson is "buy more AI."',
+      'It was 15 years of boring standardization they did BEFORE AI existed.',
+      'So the real lesson isn\'t "unleash AI." It\'s reduce variance first.',
+      'Drop a comment below.',
+      'reply',
+    ].join('\n\n'),
+    snapshotText: '',
+    rawSnapshotText: '',
+    snapshotElements: [],
+    localSnapshotText: '',
+    localRawSnapshotText: '',
+    localSnapshotElements: [],
+    mode: 'draft_only',
+  });
+
+  const commentDraft = brief.followUp.drafts.find(d => d.kind === 'comment_candidate')?.text ?? '';
+  assert.equal(commentDraft.includes('AI theater'), false);
+  assert.equal(commentDraft.includes('normal web plumbing'), false);
+  assert.equal(commentDraft.includes('markdown'), false);
+  assert.match(commentDraft, /people usually miss/i);
+  assert.match(commentDraft, /visible AI lift/i);
+  assert.match(commentDraft, /standardization underneath/i);
+  assert.match(commentDraft, /speed up the mess/i);
+  assert.equal(commentDraft.includes('What stands out to me'), false);
+});
+
+test('Basia-style page-text body extraction skips byline shell before real post prose', () => {
+  const brief = buildFollowUpBrief({
+    selectedTab: { id: 'T1', title: 'Post | LinkedIn', url: 'https://www.linkedin.com/feed/update/urn:li:activity:7473721297433329665/' },
+    readUrl: 'https://www.linkedin.com/feed/update/urn:li:activity:7473721297433329665/',
+    pageText: [
+      'Feed post',
+      'Basia Kubicka • Following',
+      'AI PM · Vibe Coding · AI Agents · Ex-AI PM @ API dev platform (Sequoia-backed), Ex-founder (Techstars-backed)',
+      'View my newsletter',
+      '1d •',
+      'Spotify just showed Anthropic how to ship with AI.',
+      'Today, 99% of them use AI coding tools every week. Their PR volume is up 76%, and migrations that took months now take days.',
+      'So everyone assumes the lesson is "buy more AI."',
+      'It was 15 years of boring standardization they did BEFORE AI existed.',
+      'So the real lesson isn\'t "unleash AI." It\'s reduce variance first.',
+      'Drop a comment below.',
+      'reply',
+    ].join('\n\n'),
+    snapshotText: '',
+    rawSnapshotText: '',
+    snapshotElements: [],
+    localSnapshotText: '',
+    localRawSnapshotText: '',
+    localSnapshotElements: [
+      { tag: 'span', text: 'Basia Kubicka', id: null },
+    ],
+    mode: 'draft_only',
+  });
+
+  const excerpt = brief.followUp.postContext.postBodyExcerpt;
+  assert.match(excerpt, /^Spotify just showed Anthropic how to ship with AI\./);
+  assert.equal(excerpt.includes('AI PM · Vibe Coding'), false);
+  assert.equal(excerpt.includes('View my newsletter'), false);
+  assert.equal(excerpt.includes('Following'), false);
+});
+
 test('M15: eligible post + weak/thin content → brief has commentability but no commentAngles', async () => {
   // Post-detail page but content is too sparse for comment-prep
   const elements = [
