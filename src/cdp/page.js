@@ -12,7 +12,7 @@ import { CdpConnectionError } from './session.js';
 const CONNECT_TIMEOUT_MS = 5_000;
 const COMMAND_TIMEOUT_MS = 10_000;
 const NAVIGATION_TIMEOUT_MS = 20_000;
-const SNAPSHOT_LIMIT = 200;
+const SNAPSHOT_LIMIT = 300;
 
 export class PageActionError extends Error {
   constructor(message, status = 500) {
@@ -191,16 +191,44 @@ export async function getPageText(client) {
   return result.value;
 }
 
-// Fixed, read-only expression — not an arbitrary-execution endpoint. It only
-// collects a bounded list of interactive/heading elements with their visible
-// label and id, which is enough for an agent to choose a selector to act on.
+// Fixed, read-only expression — not an arbitrary-execution endpoint. It collects
+// interactive/heading elements (for agent action selection) PLUS prose-bearing
+// elements (for content extraction), merged in DOM order and bounded.
+//
+// Prose elements (p, article, section, div, span) are filtered to those with
+// visible text ≥ 20 chars to avoid massive noise from empty/short containers.
 const SNAPSHOT_EXPRESSION = `(() => {
-  const selectors = 'a, button, input, textarea, select, [role="button"], [role="link"], h1, h2, h3';
-  return Array.from(document.querySelectorAll(selectors)).slice(0, ${SNAPSHOT_LIMIT}).map((el) => ({
-    tag: el.tagName.toLowerCase(),
-    text: (el.innerText || el.value || el.getAttribute('aria-label') || '').trim().slice(0, 120),
-    id: el.id || null,
-  }));
+  const LIMIT = ${SNAPSHOT_LIMIT};
+  const PROSE_MIN_LEN = 20;
+
+  const interactiveSel = 'a, button, input, textarea, select, [role="button"], [role="link"], h1, h2, h3';
+  const proseSel = 'p, article, section, div, span';
+
+  const interactive = new Set(document.querySelectorAll(interactiveSel));
+  const prose = document.querySelectorAll(proseSel);
+
+  const collected = new Set();
+  for (const el of interactive) collected.add(el);
+  for (const el of prose) {
+    const t = (el.innerText || '').trim();
+    if (t.length >= PROSE_MIN_LEN) collected.add(el);
+  }
+
+  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_ELEMENT, {
+    acceptNode: (n) => collected.has(n) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP,
+  });
+  const ordered = [];
+  while (walker.nextNode() && ordered.length < LIMIT) {
+    const el = walker.currentNode;
+    const text = (el.innerText || el.value || el.getAttribute('aria-label') || '').trim().slice(0, 200);
+    if (!text) continue;
+    ordered.push({
+      tag: el.tagName.toLowerCase(),
+      text,
+      id: el.id || null,
+    });
+  }
+  return ordered;
 })()`;
 
 export async function getPageSnapshot(client) {
@@ -211,6 +239,165 @@ export async function getPageSnapshot(client) {
   });
   if (exceptionDetails) {
     throw new PageActionError(`could not build page snapshot: ${exceptionDetails.text}`, 502);
+  }
+  return result.value;
+}
+
+/**
+ * Local/anchor-centered snapshot: captures a bounded DOM subtree around an
+ * element whose text contains `anchorText`. Instead of walking the entire
+ * document.body (which may exhaust the element limit before reaching the
+ * target post), this finds the anchor element, walks up to a container
+ * ancestor, and captures interactive + prose elements only within that
+ * subtree.
+ *
+ * Returns the same { tag, text, id } element array format as getPageSnapshot,
+ * but scoped to the local region. Returns an empty array if no anchor match.
+ */
+const LOCAL_SNAPSHOT_LIMIT = 120;
+
+export function scoreLocalAnchorText(anchorText, rawText) {
+  if (!anchorText || !rawText) return Number.NEGATIVE_INFINITY;
+  const anchor = String(anchorText).trim().toLowerCase();
+  const text = String(rawText).trim();
+  const lower = text.toLowerCase();
+  if (!anchor || !lower.includes(anchor)) return Number.NEGATIVE_INFINITY;
+
+  let score = 0;
+  const pos = lower.indexOf(anchor);
+  const anchorNearEnd = pos >= 0 && pos > lower.length * 0.6;
+
+  const lines = lower.split(/\n+/).map((s) => s.trim()).filter(Boolean);
+  if (lower === anchor) score += 500;
+  if (lower.startsWith(anchor)) score += 220;
+  if (lines.some((line) => line === anchor)) score += 180;
+  if (lower.includes(`open control menu for post by ${anchor}`)) score += 420;
+  if (lower.includes(`hide post by ${anchor}`)) score += 320;
+  if (lower.includes(`post by ${anchor}`)) score += 220;
+  if (lower.includes(`view ${anchor}`) && lower.includes('profile')) score += 80;
+
+  if (text.length <= 80) score += 120;
+  else if (text.length <= 180) score += 40;
+  else if (text.length > 260) score -= 80;
+
+  if (anchorNearEnd) score -= 160;
+  if (/\b(reply|replies|comment|commented|reacted)\b/i.test(text) && !lower.startsWith(anchor)) score -= 140;
+  if (/\b1w\b|\b1 week ago\b|\b2nd\b|\b3rd\+?\b/i.test(text) && lower.startsWith(anchor)) score += 40;
+
+  return score;
+}
+
+function buildLocalSnapshotExpression(anchorText) {
+  // Escape for safe embedding in a JS string literal inside the expression
+  const escaped = anchorText.replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n');
+  return `(() => {
+  const LOCAL_LIMIT = ${LOCAL_SNAPSHOT_LIMIT};
+  const PROSE_MIN_LEN = 20;
+  const ANCHOR_TEXT = '${escaped}'.toLowerCase();
+
+  // Phase 1: find the DOM element whose text best matches the anchor string.
+  // Prefer exact/byline/control-menu matches over long prose that only mentions
+  // the author name at the end (common in comments quoting the post author).
+  function scoreAnchorMatch(rawText) {
+    if (!rawText) return Number.NEGATIVE_INFINITY;
+    const text = String(rawText).trim();
+    const lower = text.toLowerCase();
+    if (!lower.includes(ANCHOR_TEXT)) return Number.NEGATIVE_INFINITY;
+
+    let score = 0;
+    const pos = lower.indexOf(ANCHOR_TEXT);
+    const anchorNearEnd = pos >= 0 && pos > lower.length * 0.6;
+
+    const lines = lower.split(/\n+/).map((s) => s.trim()).filter(Boolean);
+    if (lower === ANCHOR_TEXT) score += 500;
+    if (lower.startsWith(ANCHOR_TEXT)) score += 220;
+    if (lines.some((line) => line === ANCHOR_TEXT)) score += 180;
+    if (lower.includes('open control menu for post by ' + ANCHOR_TEXT)) score += 420;
+    if (lower.includes('hide post by ' + ANCHOR_TEXT)) score += 320;
+    if (lower.includes('post by ' + ANCHOR_TEXT)) score += 220;
+    if (lower.includes('view ' + ANCHOR_TEXT) && lower.includes('profile')) score += 80;
+
+    if (text.length <= 80) score += 120;
+    else if (text.length <= 180) score += 40;
+    else if (text.length > 260) score -= 80;
+
+    if (anchorNearEnd) score -= 160;
+    if (/\b(reply|replies|comment|commented|reacted)\b/i.test(text) && !lower.startsWith(ANCHOR_TEXT)) score -= 140;
+    if (/\b1w\b|\b1 week ago\b|\b2nd\b|\b3rd\+?\b/i.test(text) && lower.startsWith(ANCHOR_TEXT)) score += 40;
+
+    return score;
+  }
+
+  const allEls = document.querySelectorAll('*');
+  let anchor = null;
+  let bestScore = Number.NEGATIVE_INFINITY;
+  for (const el of allEls) {
+    const ownText = (el.innerText || el.textContent || '').trim();
+    if (!(ownText.length > 0 && ownText.length < 500)) continue;
+    const score = scoreAnchorMatch(ownText);
+    if (score > bestScore) {
+      bestScore = score;
+      anchor = el;
+    }
+  }
+  if (!anchor) return [];
+
+  // Phase 2: walk up to a reasonable container ancestor
+  const containerTags = new Set(['ARTICLE', 'SECTION', 'MAIN']);
+  let container = anchor;
+  let walks = 0;
+  while (container.parentElement && container.parentElement !== document.body && walks < 8) {
+    container = container.parentElement;
+    walks++;
+    if (containerTags.has(container.tagName)) break;
+    if (container.getAttribute && container.getAttribute('role') === 'main') break;
+    // A container with many children likely wraps the post region
+    if (container.children.length >= 10) break;
+  }
+
+  // Phase 3: collect interactive + prose elements within the container subtree
+  const interactiveSel = 'a, button, input, textarea, select, [role="button"], [role="link"], h1, h2, h3';
+  const proseSel = 'p, article, section, div, span';
+
+  const interactive = new Set(container.querySelectorAll(interactiveSel));
+  const prose = container.querySelectorAll(proseSel);
+
+  const collected = new Set();
+  for (const el of interactive) collected.add(el);
+  for (const el of prose) {
+    const t = (el.innerText || '').trim();
+    if (t.length >= PROSE_MIN_LEN) collected.add(el);
+  }
+
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_ELEMENT, {
+    acceptNode: (n) => collected.has(n) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_SKIP,
+  });
+  const ordered = [];
+  while (walker.nextNode() && ordered.length < LOCAL_LIMIT) {
+    const el = walker.currentNode;
+    const text = (el.innerText || el.value || el.getAttribute('aria-label') || '').trim().slice(0, 200);
+    if (!text) continue;
+    ordered.push({
+      tag: el.tagName.toLowerCase(),
+      text,
+      id: el.id || null,
+    });
+  }
+  return ordered;
+})()`;
+}
+
+export async function getLocalSnapshot(client, { anchorText }) {
+  if (!anchorText || typeof anchorText !== 'string') {
+    throw new PageActionError('getLocalSnapshot requires a non-empty anchorText string', 400);
+  }
+  await client.send('Runtime.enable');
+  const { result, exceptionDetails } = await client.send('Runtime.evaluate', {
+    expression: buildLocalSnapshotExpression(anchorText),
+    returnByValue: true,
+  });
+  if (exceptionDetails) {
+    throw new PageActionError(`could not build local snapshot: ${exceptionDetails.text}`, 502);
   }
   return result.value;
 }

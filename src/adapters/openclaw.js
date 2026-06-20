@@ -48,6 +48,13 @@ export function createOpenClawAdapter({
     return request('GET', '/page/snapshot');
   }
 
+  async function localSnapshot({ anchorText }) {
+    if (typeof anchorText !== 'string' || !anchorText.trim()) {
+      throw new TypeError('localSnapshot requires a non-empty anchorText string');
+    }
+    return request('POST', '/page/local-snapshot', { anchorText });
+  }
+
   async function click({ selector }) {
     if (typeof selector !== 'string' || !selector.trim()) {
       throw new TypeError('click requires a non-empty selector string');
@@ -87,5 +94,5 @@ export function createOpenClawAdapter({
     return request('POST', '/control/recover');
   }
 
-  return { health, tabs, goto, url, text, snapshot, click, type, pause, resume, state, recover };
+  return { health, tabs, goto, url, text, snapshot, localSnapshot, click, type, pause, resume, state, recover };
 }

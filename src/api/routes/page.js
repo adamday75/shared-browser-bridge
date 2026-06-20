@@ -7,6 +7,7 @@ import {
   typeIntoSelector,
   getPageText,
   getPageSnapshot,
+  getLocalSnapshot,
   PageActionError,
 } from '../../cdp/page.js';
 import { createHandoffGuard } from '../../guards/handoff.js';
@@ -135,6 +136,27 @@ export function snapshotRoute({ store, session }) {
     return guard('read:snapshot', () => runPageAction(async () => {
       const { targetTab } = store.getState();
       const snapshot = await withPage(session, (client) => getPageSnapshot(client), { targetId: targetTab?.id ?? null });
+      return { snapshot };
+    }));
+  };
+}
+
+export function localSnapshotRoute({ store, session }) {
+  const guard = createHandoffGuard({ store, session });
+  return async (req) => {
+    const { body, error } = await parseJsonBody(req);
+    if (error) return reject(store, 'read:local-snapshot', bodyErrorResponse(error));
+    if (!body || typeof body.anchorText !== 'string' || !body.anchorText.trim()) {
+      return reject(store, 'read:local-snapshot', badRequest('body must include a non-empty "anchorText" string'));
+    }
+
+    return guard('read:local-snapshot', () => runPageAction(async () => {
+      const { targetTab } = store.getState();
+      const snapshot = await withPage(
+        session,
+        (client) => getLocalSnapshot(client, { anchorText: body.anchorText.trim() }),
+        { targetId: targetTab?.id ?? null }
+      );
       return { snapshot };
     }));
   };

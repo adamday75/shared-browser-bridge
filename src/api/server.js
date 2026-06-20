@@ -8,6 +8,7 @@ import {
   urlRoute,
   textRoute,
   snapshotRoute,
+  localSnapshotRoute,
 } from './routes/page.js';
 import { pauseRoute, resumeRoute, recoverRoute, detachRoute, controlStateRoute } from './routes/control.js';
 import { checkToken } from './auth.js';
@@ -30,6 +31,7 @@ export function createServer({ store, session, recoverSession, setSession, clear
     'GET /page/url': urlRoute({ store, session }),
     'GET /page/text': textRoute({ store, session }),
     'GET /page/snapshot': snapshotRoute({ store, session }),
+    'POST /page/local-snapshot': localSnapshotRoute({ store, session }),
     'POST /control/pause': pauseRoute({ store }),
     'POST /control/resume': resumeRoute({ store, session }),
     'POST /control/recover': recoverRoute({ store, recoverSession, setSession }),

@@ -1,7 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { WebSocketServer } from 'ws';
-import { withPage } from '../src/cdp/page.js';
+import { withPage, scoreLocalAnchorText } from '../src/cdp/page.js';
+
+test('scoreLocalAnchorText prefers author/byline blocks over long comment mentions', () => {
+  const anchor = 'Ani Filipova';
+  const authorByline = 'Ani Filipova\nAuthor\nI help professionals build career options';
+  const controlMenu = 'Open control menu for post by Ani Filipova';
+  const mistakenComment = 'Under 40 lists measure speed. Calloused hands measure cost. The second group knows something the first one has not lost enough yet to understand Ani Filipova';
+
+  assert.ok(scoreLocalAnchorText(anchor, controlMenu) > scoreLocalAnchorText(anchor, mistakenComment));
+  assert.ok(scoreLocalAnchorText(anchor, authorByline) > scoreLocalAnchorText(anchor, mistakenComment));
+});
 
 test('withPage falls back to ws package when globalThis.WebSocket is unavailable', async () => {
   const originalWebSocket = globalThis.WebSocket;
